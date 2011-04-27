@@ -25,8 +25,10 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE. */
 
+
 // Simple format function for messages. Use {0}, {1}... as slots for
 // parameters. Missing parameters are replaced with the empty string.
+// Example: "The value of {0} is {1}".fmt(name, value)
 String.prototype.fmt = function()
 {
   var args = Array.prototype.slice.call(arguments);
@@ -39,13 +41,16 @@ String.prototype.fmt = function()
 // node.js
 (function(logo) {
 
+  // TODO these shouldn't be global but passed around as the execution context
   logo.scope_global = logo.scope = { things: {} };
 
   // Helper functions to deal with the asynchronous calls
 
-  // Use case: handles the error transparently; g is simply a function
-  // called with the result of evaluating the first token and returning a value
-  // in turn, which can be an error if something goes wrong. See BUTFIRST:
+  // Use case: handles the error transparently; f is the original continuation
+  // and g a function called with the value argument of f (e.g. the result of
+  // evaluating the current token), which in turns returns a value. The
+  // continutation is called with the error if there was any from the
+  // evaluation of the current token, or the result of g(value). Example:
   //
   //   logo.eval(tokens, e(f, function(v) { return v.butfirst(); }));
   //
@@ -115,7 +120,6 @@ String.prototype.fmt = function()
   }
 
 
-
   // Make an error object from the given error code and additional arguments.
   // The first argument is implied to be the current procedure (if any.) An
   // error object has a code and a message field.
@@ -131,6 +135,7 @@ String.prototype.fmt = function()
 
   // Error messages; first argument is always the name of current work being
   // evaluted, other arguments are passed to the logo.error constructor
+  logo.ERR_INTERNAL = 0;
   logo.ERR_STACK_OVERFLOW = 2;
   logo.ERR_DOESNT_LIKE = 4;
   logo.ERR_NOT_ENOUGH_INPUT = 6;
@@ -144,6 +149,7 @@ String.prototype.fmt = function()
   logo.ERR_UNEXPECTED_BRACKET = 26;
 
   logo.error_messages = [];
+  logo.error_messages[logo.ERR_INTERNAL] = "Fatal internal error ({1})";
   logo.error_messages[logo.ERR_STACK_OVERFLOW] = "Stack overflow";
   logo.error_messages[logo.ERR_DOESNT_LIKE] = "{0} doesn't like {1} as input";
   logo.error_messages[logo.ERR_NOT_ENOUGH_INPUT] = "Not enough inputs to {0}";
@@ -157,11 +163,10 @@ String.prototype.fmt = function()
   logo.error_messages[logo.ERR_ALREADY_DEFINED] = "{1} is already defined";
   logo.error_messages[logo.ERR_UNEXPECTED_BRACKET] = "Unexpected \"]\"";
 
-  logo.error_messages[0] = "Fatal internal error ({1})";
-  logo.error_messages[22] = "{1} is a primitive";
-  logo.error_messages[23] = "Can't use {0} here";
-  logo.error_messages[25] = "{0} without test";
-  logo.error_messages[30] = logo.error_messages[9];
+  //logo.error_messages[22] = "{1} is a primitive";
+  //logo.error_messages[23] = "Can't use {0} here";
+  //logo.error_messages[25] = "{0} without test";
+  //logo.error_messages[30] = logo.error_messages[9];
 
   // Eval the first token of a list of tokens. The token will then consume the
   // rest of list as necessary. The continuation function f(error, value,
@@ -198,8 +203,9 @@ String.prototype.fmt = function()
     }
   };
 
-  // Evaluate one line of input, and call the continuation with the appropriate
-  // mode (eval or define) for the next line of input
+  // Evaluate one line of input, and call the continuation with the value true
+  // to stay in eval mode, or false to switch to definition mode (when the line
+  // starts with TO and correctly start a procedure definition.)
   logo.eval_input = function(input, f)
   {
     logo.scope = logo.scope_global;
@@ -644,6 +650,27 @@ String.prototype.fmt = function()
             function(v) { return logo.token(v.value.length); }));
     },
 
+    // DIFFERENCE num1 num2
+    // TODO num1 - num2
+    //   outputs the difference of its inputs.  Minus sign means infix
+    //   difference in ambiguous contexts (when preceded by a complete
+    //   expression), unless it is preceded by a space and followed
+    //   by a nonspace.  (See also MINUS.)
+    DIFFERENCE: function(tokens, f)
+    {
+      logo.eval(tokens, g(f, function(num1) {
+          logo.eval(tokens, e(f, function(num2) {
+              var n1 = parseFloat(num1);
+              var n2 = parseFloat(num2);
+              return isNaN(n1) ?
+                  logo.error(logo.ERR_DOESNT_LIKE, num1.show()) :
+                isNaN(n2) ?
+                  logo.error(logo.ERR_DOESNT_LIKE, num2.show()) :
+                  logo.token(num1 - num2);
+            }));
+        }));
+    },
+
     // FIRST thing
 	  //   if the input is a word, outputs the first character of the word.
     //   If the input is a list, outputs the first member of the list.
@@ -727,6 +754,24 @@ String.prototype.fmt = function()
         }));
     },
 
+    // MINUS num
+    // TODO - num
+    //   outputs the negative of its input.  Minus sign means unary minus if
+    //   the previous token is an infix operator or open parenthesis, or it is
+    //   preceded by a space and followed by a nonspace.  There is a difference
+    //   in binding strength between the two forms:
+    //     MINUS 3 + 4	means	-(3+4)
+    //     - 3 + 4		means	(-3)+4
+    MINUS: function(tokens, f)
+    {
+      logo.eval(tokens, e(f, function(num) {
+          var n = parseFloat(num);
+          return isNaN(n) ?
+            logo.error(logo.ERR_DOESNT_LIKE, num.show()) :
+            logo.token(-n);
+        }));
+    },
+
     // PRINT thing
     // PR thing
     // (PRINT thing1 thing2 ...)
@@ -755,6 +800,45 @@ String.prototype.fmt = function()
           }, 2, logo.token(1));
       },
 
+    // QUOTIENT num1 num2
+    // (QUOTIENT num)
+    // TODO num1 / num2
+    //   outputs the quotient of its inputs.  The quotient of two integers
+    //   is an integer if and only if the dividend is a multiple of the divisor.
+    //   (In other words, QUOTIENT 5 2 is 2.5, not 2, but QUOTIENT 4 2 is
+    //   2, not 2.0 -- it does the right thing.)  With a single input,
+    //   QUOTIENT outputs the reciprocal of the input.
+    QUOTIENT: function(tokens, f)
+    {
+      logo.eval(tokens, function(error, num, tokens) {
+          if (error) {
+            f(error);
+          } else {
+            var n = parseInt(num, 10);
+            if (isNaN(n)) {
+              f(logo.error(logo.ERR_DOESNT_LIKE, num.show()));
+            } else {
+              if (logo.scope.in_parens && tokens.length === 0) {
+                f(undefined, logo.token(1 / n), tokens);
+              } else {
+                logo.eval(tokens, function(error, num2, tokens) {
+                    if (error) {
+                      f(error);
+                    } else {
+                      var n2 = parseInt(num2, 10);
+                      if (isNaN(n2)) {
+                        f(logo.error(logo.ERR_DOESNT_LIKE, num2.show()));
+                      } else {
+                        f(undefined, logo.token(n / n2), tokens);
+                      }
+                    }
+                  });
+              }
+            }
+          }
+        });
+    },
+
     // READLIST
     // RL
     //   reads a line from the read stream (initially the keyboard) and
@@ -772,8 +856,37 @@ String.prototype.fmt = function()
           if (list.is_list()) {
             f(undefined, list, tokens);
           } else {
-            f(logo.error(ERR_INTERNAL,
+            f(logo.error(logo.ERR_INTERNAL,
                   "{1} is not a list?!".fmt(list.show())));
+          }
+        });
+    },
+
+    // REMAINDER num1 num2
+    //   outputs the remainder on dividing "num1" by "num2"; both must be
+    //   integers and the result is an integer with the same sign as num1.
+    REMAINDER: function(tokens, f)
+    {
+      logo.eval(tokens, function(error, num1, tokens) {
+          if (error) {
+            f(error);
+          } else {
+            var n1 = parseFloat(num1);
+            if (isNaN(n1)) {
+              f(logo.error(logo.ERR_DOESNT_LIKE, num1.show()));
+            } else {
+              var sign = num1 < 0 ? -1 : 1;
+              logo.eval(tokens, function(error, num2, tokens) {
+                  var n2 = parseFloat(num2);
+                  if (isNaN(n2)) {
+                    f(logo.error(logo.ERR_DOESNT_LIKE, num2.show()));
+                  } else {
+                    f(undefined,
+                      logo.token(Math.abs(num1) % Math.abs(num2) * sign),
+                      tokens);
+                  }
+                });
+            }
           }
         });
     },
@@ -858,18 +971,6 @@ String.prototype.fmt = function()
 
   logo.words =
   {
-
-    // DIFFERENCE num1 num2
-    // TODO num1 - num2
-    //   outputs the difference of its inputs.  Minus sign means infix
-    //   difference in ambiguous contexts (when preceded by a complete
-    //   expression), unless it is preceded by a space and followed
-    //   by a nonspace.  (See also MINUS.)
-    DIFFERENCE: function(tokens)
-    {
-      return logo
-        .token(logo.get_num(tokens) - logo.get_num(tokens));
-    },
 
     // EMPTYP thing
     // EMPTY? thing
@@ -1010,19 +1111,6 @@ String.prototype.fmt = function()
       return logo.bool(logo.eval(tokens).member_of(thing1));
     },
 
-    // MINUS num
-    // TODO - num
-    //   outputs the negative of its input.  Minus sign means unary minus if
-    //   the previous token is an infix operator or open parenthesis, or it is
-    //   preceded by a space and followed by a nonspace.  There is a difference
-    //   in binding strength between the two forms:
-    //     MINUS 3 + 4	means	-(3+4)
-    //     - 3 + 4		means	(-3)+4
-    MINUS: function(tokens)
-    {
-      return logo.token(-logo.get_num(tokens));
-    },
-
     // NOTEQUALP thing1 thing2
     // NOTEQUAL? thing1 thing2
     // TODO thing1 <> thing2
@@ -1061,33 +1149,6 @@ String.prototype.fmt = function()
       } else {
         what.value.forEach(print_f);
       }
-    },
-
-    // QUOTIENT num1 num2
-    // (QUOTIENT num)
-    // TODO num1 / num2
-    //   outputs the quotient of its inputs.  The quotient of two integers
-    //   is an integer if and only if the dividend is a multiple of the divisor.
-    //   (In other words, QUOTIENT 5 2 is 2.5, not 2, but QUOTIENT 4 2 is
-    //   2, not 2.0 -- it does the right thing.)  With a single input,
-    //   QUOTIENT outputs the reciprocal of the input.
-    QUOTIENT: function(tokens)
-    {
-      var op1 = logo.scope.in_parens && tokens.length === 1 ?
-        1 : logo.get_num(tokens);
-      var op2 = logo.get_num(tokens);
-      return logo.token(op1 / op2);
-    },
-
-    // REMAINDER num1 num2
-    //   outputs the remainder on dividing "num1" by "num2"; both must be
-    //   integers and the result is an integer with the same sign as num1.
-    REMAINDER: function(tokens)
-    {
-      var num1 = logo.get_int(tokens);
-      var sign = num1 < 0 ? -1 : 1;
-      return logo
-        .token((Math.abs(num1) % Math.abs(logo.get_int(tokens))) * sign);
     },
 
     // TEST tf
