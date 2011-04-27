@@ -56,7 +56,7 @@ String.prototype.fmt = function()
   //
   function e(f, g)
   {
-    return function(error, value, tokens) {
+    return function(error, value) {
       if (error) {
         f(error);
       } else {
@@ -64,7 +64,7 @@ String.prototype.fmt = function()
         if (v && v.error_code) {
           f(v);
         } else {
-          f(error, v, tokens);
+          f(error, v);
         }
       }
     };
@@ -83,7 +83,7 @@ String.prototype.fmt = function()
   //
   function g(f, h)
   {
-    return function(error, value, tokens) {
+    return function(error, value) {
       if (error) {
         f(error);
       } else {
@@ -105,7 +105,7 @@ String.prototype.fmt = function()
   {
     (function loop(n, acc) {
       if (n === 0) {
-        f(undefined, acc, tokens);
+        f(undefined, acc);
       } else {
         logo.eval(tokens, g(f, function(value) {
             var error = h(value, acc);
@@ -145,6 +145,7 @@ String.prototype.fmt = function()
   logo.ERR_UNEXPECTED_PAREN = 12;
   logo.ERR_HOW_TO = 13;
   logo.ERR_ALREADY_DEFINED = 15;
+  logo.ERR_CANT_USE_HERE = 23;
   logo.ERR_HOW_TO_FATAL = 24;
   logo.ERR_UNEXPECTED_BRACKET = 26;
 
@@ -158,13 +159,13 @@ String.prototype.fmt = function()
   logo.error_messages[logo.ERR_UNEXPECTED_PAREN] = "Unexpected \")\"";
   logo.error_messages[logo.ERR_WHAT_TO_DO] =
     "You don't say what to do with {1}";
+  logo.error_messages[logo.ERR_CANT_USE_HERE] = "Can't use {0} here";
   logo.error_messages[logo.ERR_HOW_TO] =
   logo.error_messages[logo.ERR_HOW_TO_FATAL] = "I don't know how to {1}";
   logo.error_messages[logo.ERR_ALREADY_DEFINED] = "{1} is already defined";
   logo.error_messages[logo.ERR_UNEXPECTED_BRACKET] = "Unexpected \"]\"";
 
   //logo.error_messages[22] = "{1} is a primitive";
-  //logo.error_messages[23] = "Can't use {0} here";
   //logo.error_messages[25] = "{0} without test";
   //logo.error_messages[30] = logo.error_messages[9];
 
@@ -188,18 +189,15 @@ String.prototype.fmt = function()
   logo.eval_loop = function(tokens, f, value)
   {
     if (tokens.length > 0) {
-      console.log("eval_loop", tokens);
-      logo.eval(tokens, function(error, value, tokens) {
+      logo.eval(tokens, function(error, value) {
           if (error) {
             f(error);
           } else {
-            console.log("eval_loop: latest value is", value);
             logo.eval_loop(tokens, f, value);
           }
         });
     } else {
-      console.log("eval_loop: no more tokens, returning:", value);
-      f(undefined, value, tokens);
+      f(undefined, value);
     }
   };
 
@@ -231,7 +229,7 @@ String.prototype.fmt = function()
                 if (tokens.length === 0) {
                   logo.current_def = { name: name.value, args: args,
                     lines: lines };
-                  f(undefined, false, []);
+                  f(undefined, false);
                 } else if (tokens.length === 1) {
                   f(logo.error(logo.ERR_DOESNT_LIKE, tokens[0].show()));
                 } else {
@@ -252,13 +250,13 @@ String.prototype.fmt = function()
         }
       } else {
         // Regular eval mode
-        logo.eval_loop(tokens, function(error, value, tokens) {
+        logo.eval_loop(tokens, function(error, value) {
             if (error) {
               f(error);
             } else if (tokens.length !== 0) {
               f(logo.error(ERR_INTERNAL, "There should be no input left?!"));
             } else {
-              f(undefined, true, []);
+              f(undefined, true);
             }
           });
       }
@@ -275,39 +273,39 @@ String.prototype.fmt = function()
     var lines = definition.lines;
     var p = function(tokens, f)
     {
-      console.log(">>>", name, args);
       var scope = logo.scope;
       logo.scope = { current_procedure: lines[0][1],
         things: Object.create(scope.things) };
       var n = args.length;
-      console.log("=== eval args ({0})".fmt(n));
       (function eval_args(i) {
         if (i < n) {
-          console.log("=== eval arg#{0} ({1})".fmt(i, args[i]));
-          logo.eval(tokens, e(f, function(value) {
-              logo.scope.things[args[i]] = value;
-              console.log("=== eval arg#{0} ({1}) = {2}"
-                .fmt(i, args[i], value.show()), value);
-              eval_args(i + 1);
-            }));
+          logo.eval(tokens, function(error, value) {
+              if (error) {
+                f(error);
+              } else {
+                logo.scope.things[args[i]] = value;
+                eval_args(i + 1);
+              }
+            });
         } else {
-          console.log("*** Done with args, now body");
           var m = lines.length - 1;
+          delete logo.scope.current_procedure;
           (function eval_lines(j, val) {
             if (j < m) {
               var tokens_ = lines[j].slice(0);
-              console.log("*** Line #{0}/{1}: ".fmt(j, m - 1), tokens_);
-              (function eval_tokens() {
-                if (tokens_.length > 0) {
-                  logo.eval(tokens_, function(error, value, tokens) {
-                      
-                    });
-                }
-              })();
+              logo.eval_loop(tokens_, function(error, value) {
+                  if (error) {
+                    f(error);
+                  } else if (tokens_.length !== 0) {
+                    f(logo.error(ERR_INTERNAL,
+                        "There should be no input left?!"));
+                  } else {
+                    f(undefined, true);
+                  }
+                });
             } else {
-              console.log("<<< Done, returning {0}".fmt(val ? val.show() : val))
               logo.scope = scope;
-              f(undefined, val, tokens);
+              f(undefined, val);
             }
           })(1);
         }
@@ -441,7 +439,7 @@ String.prototype.fmt = function()
   logo.$token.apply = function(tokens, f)
   {
     if (logo.scope.current_procedure) {
-      f(undefined, this, tokens);
+      f(undefined, this);
     } else {
       f(logo.error(logo.ERR_WHAT_TO_DO, this.show()));
     }
@@ -483,9 +481,9 @@ String.prototype.fmt = function()
     if (typeof p === "function") {
       var q = logo.scope.current_procedure;
       logo.scope.current_procedure = this;
-      p(tokens, function(error, value, tokens) {
+      p(tokens, function(error, value) {
           logo.scope.current_procedure = q;
-          f(error, value, tokens);
+          f(error, value);
         });
     } else {
       f(logo.error(logo.ERR_HOW_TO, this.show()));
@@ -564,16 +562,16 @@ String.prototype.fmt = function()
     if (tokens_.length > 0) {
       var parens = !!logo.scope.in_parens;
       logo.scope.in_parens = true;
-      logo.eval(tokens_, function(error, value, tokens__) {
+      logo.eval(tokens_, function(error, value) {
           logo.scope.in_parens = parens;
-          if (error || tokens__.length === 0) {
-            f(error, value, tokens);
+          if (error || tokens_.length === 0) {
+            f(error, value);
           } else {
             f(logo.error(logo.ERR_TOO_MUCH_PARENS));
           }
         });
     } else {
-      f(error, undefined, tokens);
+      f(error, undefined);
     }
   };
 
@@ -636,6 +634,46 @@ String.prototype.fmt = function()
     BUTLAST: function(tokens, f)
     {
       logo.eval(tokens, e(f, function(v) { return v.butlast(); }));
+    },
+
+    // COPYDEF newname oldname
+    //   command.  Makes "newname" a procedure identical to "oldname".
+    //   The latter may be a primitive.  If "newname" was already defined,
+    //   its previous definition is lost.  If "newname" was already a
+    //   primitive, the redefinition is not permitted unless the variable
+    //   REDEFP has the value TRUE.
+    //   Note: dialects of Logo differ as to the order of inputs to COPYDEF.
+    //   This dialect uses "MAKE order," not "NAME order."
+    COPYDEF: function(tokens, f)
+    {
+      logo.eval(tokens, function(error, newname) {
+          if (error) {
+            f(error);
+          } else if (!newname.is_word()) {
+              f(logo.error(logo.ERR_DOESNT_LIKE, newname.show()));
+          } else {
+            var n = newname.value.toUpperCase();
+            if (n in logo.procedures) {
+              f(logo.error(logo.ERR_ALREADY_DEFINED, newname.show()));
+            } else {
+              logo.eval(tokens, function(error, oldname) {
+                  if (error) {
+                    f(error);
+                  } else if (!oldname.is_word()) {
+                    f(logo.error(logo.ERR_DOESNT_LIKE, oldname.show()));
+                  } else {
+                    var o = oldname.value.toUpperCase();
+                    if (!(o in logo.procedures)) {
+                      f(logo.error(logo.ERR_HOW_TO_FATAL, oldname.show()));
+                    } else {
+                      logo.procedures[n] = logo.procedures[o];
+                      f();
+                    }
+                  }
+                });
+            }
+          }
+        });
     },
 
     // COUNT thing
@@ -810,7 +848,7 @@ String.prototype.fmt = function()
     //   QUOTIENT outputs the reciprocal of the input.
     QUOTIENT: function(tokens, f)
     {
-      logo.eval(tokens, function(error, num, tokens) {
+      logo.eval(tokens, function(error, num) {
           if (error) {
             f(error);
           } else {
@@ -819,9 +857,9 @@ String.prototype.fmt = function()
               f(logo.error(logo.ERR_DOESNT_LIKE, num.show()));
             } else {
               if (logo.scope.in_parens && tokens.length === 0) {
-                f(undefined, logo.token(1 / n), tokens);
+                f(undefined, logo.token(1 / n));
               } else {
-                logo.eval(tokens, function(error, num2, tokens) {
+                logo.eval(tokens, function(error, num2) {
                     if (error) {
                       f(error);
                     } else {
@@ -829,7 +867,7 @@ String.prototype.fmt = function()
                       if (isNaN(n2)) {
                         f(logo.error(logo.ERR_DOESNT_LIKE, num2.show()));
                       } else {
-                        f(undefined, logo.token(n / n2), tokens);
+                        f(undefined, logo.token(n / n2));
                       }
                     }
                   });
@@ -854,7 +892,7 @@ String.prototype.fmt = function()
       logo.read(function(input) {
           var list = logo.tokenize("[" + input + "]")[0];
           if (list.is_list()) {
-            f(undefined, list, tokens);
+            f(undefined, list);
           } else {
             f(logo.error(logo.ERR_INTERNAL,
                   "{1} is not a list?!".fmt(list.show())));
@@ -867,7 +905,7 @@ String.prototype.fmt = function()
     //   integers and the result is an integer with the same sign as num1.
     REMAINDER: function(tokens, f)
     {
-      logo.eval(tokens, function(error, num1, tokens) {
+      logo.eval(tokens, function(error, num1) {
           if (error) {
             f(error);
           } else {
@@ -876,14 +914,13 @@ String.prototype.fmt = function()
               f(logo.error(logo.ERR_DOESNT_LIKE, num1.show()));
             } else {
               var sign = num1 < 0 ? -1 : 1;
-              logo.eval(tokens, function(error, num2, tokens) {
+              logo.eval(tokens, function(error, num2) {
                   var n2 = parseFloat(num2);
                   if (isNaN(n2)) {
                     f(logo.error(logo.ERR_DOESNT_LIKE, num2.show()));
                   } else {
                     f(undefined,
-                      logo.token(Math.abs(num1) % Math.abs(num2) * sign),
-                      tokens);
+                      logo.token(Math.abs(num1) % Math.abs(num2) * sign));
                   }
                 });
             }
@@ -946,11 +983,17 @@ String.prototype.fmt = function()
           } else {
             var value = varname.value in logo.scope.things ?
               logo.scope.things[varname.value] : undefined;
-            console.log("THING {0} =".fmt(varname.value), value);
-            return value || logo.error(logo.ERR_NO_VAR, varname.show());
+            if (value) {
+              f(undefined, value);
+            } else {
+              f(logo.error(logo.ERR_NO_VAR, varname.show()));
+            }
           }
         }));
     },
+
+    // TO is handled in a special manner
+    TO: function(tokens, f) { f(logo.error(logo.ERR_CANT_USE_HERE)); },
 
     // WORD word1 word2
     // (WORD word1 word2 word3 ...)
@@ -1160,9 +1203,6 @@ String.prototype.fmt = function()
     {
       logo.scope.test = logo.get_bool(tokens);
     },
-
-    // TO is handled in a special manner
-    TO: function(tokens) { throw logo.error(23); },
 
     // WORDP thing
     // WORD? thing
