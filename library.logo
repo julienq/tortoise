@@ -1,0 +1,29 @@
+; COMBINE thing1 thing2
+;   if thing2 is a word, outputs WORD thing1 thing2.  If thing2 is a list,
+;   outputs FPUT thing1 thing2.
+to combine :thing1 :thing2
+  ifelse word? :thing1 [word :thing1 :thing2] [fput :thing1 :thing2]
+end
+
+; IGNORE value
+;   command.  Does nothing.  Used when an expression is evaluated for
+;   a side effect and its actual value is unimportant.
+to ignore :value
+end
+
+; LOCALMAKE varname value
+;   command.  Makes the named variable local, like LOCAL, and
+;   assigns it the given value, like MAKE.
+to localmake :varname :value
+  local :varname
+  make :varname :value
+end
+
+; NAME value varname
+;   command.  Same as MAKE but with the inputs in reverse order.
+to name :value :varname
+  make :varname :value
+end
+
+; The welcome message shows that the library was loaded correctly
+pr [Welcome to Logo]

@@ -1,3 +1,0 @@
-This is a Logo interpreter in Javascript, based on Brian Harvey's UCB Logo. It
-comes with two front-ends, one is a REPL that runs in Node.js, and the other is
-a Web-based front-end with the famous turtle drawing into an SVG document.
