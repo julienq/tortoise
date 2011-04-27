@@ -120,6 +120,12 @@ String.prototype.fmt = function()
   }
 
 
+  // Create a token with the value TRUE or FALSE depending on the predicate p
+  logo.bool = function(p)
+  {
+    return logo.token(p ? "TRUE" : "FALSE");
+  }
+
   // Make an error object from the given error code and additional arguments.
   // The first argument is implied to be the current procedure (if any.) An
   // error object has a code and a message field.
@@ -445,6 +451,20 @@ String.prototype.fmt = function()
     }
   };
 
+  // Test whether this word is equal to the given token, in the sense of EQUALP
+  logo.$token.equalp = function(token)
+  {
+    return (this.is_number() && token.is_number() &&
+        parseFloat(this.value) === parseFloat(token.value)) ||
+      token.is_word() && this.value === token.value;
+  };
+
+  // Test whether this token's value is a number
+  logo.$token.is_number = function(token)
+  {
+    return this.value !== "" && /^\d*(\.\d*)?$/.test(this.value);
+  };
+
   logo.$token.fput = function(thing)
   {
     if (thing.is_word() && thing.value.length === 1) {
@@ -490,6 +510,7 @@ String.prototype.fmt = function()
     }
   };
 
+  logo.$procedure.is_number = function() { return false; };
   logo.$procedure.is_procedure = function(proc) { return this.value === proc; };
 
 
@@ -506,6 +527,7 @@ String.prototype.fmt = function()
   };
 
   logo.$list.is_list = function() { return true; };
+  logo.$list.is_number = function() { return false; };
   logo.$list.is_word = function() { return false; };
   logo.$list.item = function(i) { return this.value[i - 1] || logo.list(); },
 
@@ -514,6 +536,21 @@ String.prototype.fmt = function()
   logo.$list.butlast = function()
   {
     return logo.list(this.value.slice(0, this.value.length - 1));
+  };
+
+  logo.$list.equalp = function(token)
+  {
+    return (function deep_eq(x, y)
+    {
+      if (x.is_list() && y.is_list() && x.value.length === y.value.length) {
+        for (var eq = true, i = 0, n = x.value.length; eq && i < n; ++i) {
+          eq = deep_eq(x.value[i], y.value[i]);
+        }
+        return eq;
+      } else {
+        return x.is_word() && x.equalp(y);
+      }
+    })(this, token);
   };
 
   logo.$list.fput = function(t)
@@ -586,6 +623,18 @@ String.prototype.fmt = function()
 
 
   // Predefined procedures; from http://www.cs.berkeley.edu/~bh/usermanual
+
+  // Helper function for one-argument procedure.
+  function $eval(tokens, g, f)
+  {
+    logo.eval(tokens, function(error, value) {
+        if (error) {
+          f(error);
+        } else {
+          g(value);
+        }
+      });
+  };
 
   // TODO ARRAY, MDARRAY, LISTTOARRAY, ARRAYTOLIST, REVERSE, GENSYM, FIRSTS,
   // BUTFIRSTS, MDITEM, PICK, REMOVE, REMDUP, QUOTED, SETITEM, MDSETITEM,
@@ -709,6 +758,41 @@ String.prototype.fmt = function()
         }));
     },
 
+    // EMPTYP thing
+    // EMPTY? thing
+    //   outputs TRUE if the input is the empty word or the empty list,
+    //   FALSE otherwise.
+    EMPTYP: function(tokens, f)
+    {
+      $eval(tokens, function(thing) {
+          f(undefined, logo.bool(thing.value.length === 0))
+        }, f);
+    },
+
+    // EQUALP thing1 thing2
+    // EQUAL? thing1 thing2
+    // TODO thing1 = thing2
+    //   outputs TRUE if the inputs are equal, FALSE otherwise.  Two numbers
+    //   are equal if they have the same numeric value.  Two non-numeric words
+    //   are equal if they contain the same characters in the same order.  If
+    //   there is a variable named CASEIGNOREDP whose value is TRUE, then an
+    //   upper case letter is considered the same as the corresponding lower
+    //   case letter.  (This is the case by default.)  Two lists are equal if
+    //   their members are equal.  An array is only equal to itself; two
+    //   separately created arrays are never equal even if their members are
+    //   equal.  (It is important to be able to know if two expressions have
+    //   the same array as their value because arrays are mutable; if, for
+    //   example, two variables have the same array as their values then
+    //   performing SETITEM on one of them will also change the other.)
+    EQUALP: function(tokens, f)
+    {
+      $eval(tokens, function(thing1) {
+          $eval(tokens, function(thing2) {
+              f(undefined, logo.bool(thing1.equalp(thing2)));
+            }, f);
+        }, f);
+    },
+
     // FIRST thing
 	  //   if the input is a word, outputs the first character of the word.
     //   If the input is a list, outputs the first member of the list.
@@ -774,6 +858,16 @@ String.prototype.fmt = function()
       r(tokens, f, function(v, l) { l.value.push(v); }, 2, logo.list());
     },
 
+    // LISTP thing
+    // LIST? thing
+    //   outputs TRUE if the input is a list, FALSE otherwise.
+    LISTP: function(tokens, f)
+    {
+      $eval(tokens, function(thing) {
+          f(undefined, logo.bool(thing.is_list()));
+        }, f);
+    },
+
     // LPUT thing list
     //   outputs a list equal to its second input with one extra member,
     //   the first input, at the end.  If the second input is a word,
@@ -808,6 +902,20 @@ String.prototype.fmt = function()
             logo.error(logo.ERR_DOESNT_LIKE, num.show()) :
             logo.token(-n);
         }));
+    },
+
+    // NOTEQUALP thing1 thing2
+    // NOTEQUAL? thing1 thing2
+    // TODO thing1 <> thing2
+    //   outputs FALSE if the inputs are equal, TRUE otherwise.  See EQUALP
+    //   for the meaning of equality for different data types.
+    NOTEQUALP: function(tokens, f)
+    {
+      $eval(tokens, function(thing1) {
+          $eval(tokens, function(thing2) {
+              f(undefined, logo.bool(!thing1.equalp(thing2)));
+            }, f);
+        }, f);
     },
 
     // PRINT thing
@@ -1008,41 +1116,21 @@ String.prototype.fmt = function()
         }, 2, logo.token(""));
     },
 
+    // WORDP thing
+    // WORD? thing
+    //   outputs TRUE if the input is a word, FALSE otherwise.
+    WORDP: function(tokens, f)
+    {
+      $eval(tokens, function(thing) {
+          f(undefined, logo.bool(thing.is_list()));
+        }, f);
+    },
   };
 
     /*
 
   logo.words =
   {
-
-    // EMPTYP thing
-    // EMPTY? thing
-    //   outputs TRUE if the input is the empty word or the empty list,
-    //   FALSE otherwise.
-    EMPTYP: function(tokens)
-    {
-      return logo.bool(logo.eval(tokens).value.length === 0);
-    },
-
-    // EQUALP thing1 thing2
-    // EQUAL? thing1 thing2
-    // TODO thing1 = thing2
-    //   outputs TRUE if the inputs are equal, FALSE otherwise.  Two numbers
-    //   are equal if they have the same numeric value.  Two non-numeric words
-    //   are equal if they contain the same characters in the same order.  If
-    //   there is a variable named CASEIGNOREDP whose value is TRUE, then an
-    //   upper case letter is considered the same as the corresponding lower
-    //   case letter.  (This is the case by default.)  Two lists are equal if
-    //   their members are equal.  An array is only equal to itself; two
-    //   separately created arrays are never equal even if their members are
-    //   equal.  (It is important to be able to know if two expressions have
-    //   the same array as their value because arrays are mutable; if, for
-    //   example, two variables have the same array as their values then
-    //   performing SETITEM on one of them will also change the other.)
-    EQUALP: function(tokens)
-    {
-      return logo.bool(logo.eval(tokens).equalp(logo.eval(tokens)));
-    },
 
     // GLOBAL varname
     // GLOBAL varnamelist
@@ -1102,11 +1190,6 @@ String.prototype.fmt = function()
     //   superprocedure.
     IFTRUE: function(tokens) { if_true_false(tokens, true); },
 
-    // LISTP thing
-    // LIST? thing
-    //   outputs TRUE if the input is a list, FALSE otherwise.
-    LISTP: function(tokens) { return logo.bool(logo.eval(tokens).is_list()); },
-
     // LOCAL varname
     // LOCAL varnamelist
     // (LOCAL varname1 varname2 ...)
@@ -1154,16 +1237,6 @@ String.prototype.fmt = function()
       return logo.bool(logo.eval(tokens).member_of(thing1));
     },
 
-    // NOTEQUALP thing1 thing2
-    // NOTEQUAL? thing1 thing2
-    // TODO thing1 <> thing2
-    //   outputs FALSE if the inputs are equal, TRUE otherwise.  See EQUALP
-    //   for the meaning of equality for different data types.
-    NOTEQUALP: function(tokens)
-    {
-      return logo.bool(!logo.eval(tokens).equalp(logo.eval(tokens)));
-    },
-
     // PRINTOUT contentslist
     // PO contentslist
 	  //   command.  Prints to the write stream the definitions of all
@@ -1204,10 +1277,6 @@ String.prototype.fmt = function()
       logo.scope.test = logo.get_bool(tokens);
     },
 
-    // WORDP thing
-    // WORD? thing
-    //   outputs TRUE if the input is a word, FALSE otherwise.
-    WORDP: function(tokens) { return logo.bool(logo.eval(tokens).is_word()); },
   };
 
   // Abbrevs
@@ -1291,20 +1360,6 @@ String.prototype.fmt = function()
     return logo.token(this.value.substr(0, this.value.length - 1));
   };
 
-  // Test whether this word is equal to the given token, in the sense of EQUALP
-  logo.$token.equalp = function(token)
-  {
-    return (this.is_number() && token.is_number() &&
-        parseFloat(this.value) === parseFloat(token.value)) ||
-      token.is_word() && this.value === token.value;
-  };
-
-  // Test whether this token's value is a number
-  logo.$token.is_number = function(token)
-  {
-    return this.value !== "" && /^\d*(\.\d*)?$/.test(this.value);
-  };
-
   // Get the ith item (as a general rule, the ith character; first index is 1)
   logo.$token.item = function(i)
   {
@@ -1316,22 +1371,6 @@ String.prototype.fmt = function()
   {
     return false;
   }
-
-  logo.$list.equalp = function(token)
-  {
-    function deep_eq(x, y)
-    {
-      if (x.is_list() && y.is_list() && x.value.length === y.value.length) {
-        for (var eq = true, i = 0, n = x.value.length; eq && i < n; ++i) {
-          eq = deep_eq(x.value[i], y.value[i]);
-        }
-        return eq;
-      } else {
-        return x.is_word() && x.equalp(y);
-      }
-    }
-    return deep_eq(this, token);
-  };
 
   logo.$list.is_false = function() { return false; };
   logo.$list.is_list = function() { return true; };

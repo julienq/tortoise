@@ -27,12 +27,18 @@ END
 
 
 ; Aliases
-copydef "BF "BUTFIRST
-copydef "BL "BUTLAST
-copydef "PR "PRINT
-copydef "RL "READLIST
-copydef "SE "SENTENCE
+COPYDEF "BF "BUTFIRST
+COPYDEF "BL "BUTLAST
+COPYDEF "EMPTY? "EMPTYP
+COPYDEF "EQUAL? "EQUALP
+COPYDEF "LIST? "LISTP
+COPYDEF "NOTEQUAL? "NOTEQUALP
+COPYDEF "PR "PRINT
+COPYDEF "RL "READLIST
+COPYDEF "SE "SENTENCE
+COPYDEF "WORD? "WORDP
 
 
-; The welcome message shows that the library was loaded correctly
+; The welcome message shows up when the library is loaded
+PR [Tortoise Logo v0.0.1 (https://github.com/julienq/tortoise)]
 PR [Welcome to Logo]
