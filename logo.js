@@ -648,16 +648,12 @@ String.prototype.fmt = function()
   // Wrapper around eval to slurp arguments within parens, or an expected
   // number of arguments. The function g gets called for each value with the
   // current accumulated value, initialized by init, and a continuation that it
-  // must call on error or success with the new accumulated value. In some
-  // cases where parenthesized group expect a set number of arguments, max can
-  // be set (e.g. for (if test then else)
-  function $eval_slurp(tokens, g, f, n, init, max)
+  // must call on error or success with the new accumulated value.
+  function $eval_slurp(tokens, g, f, n, init)
   {
-    var n_ = logo.scope.in_parens ?
-      max ? Math.min(tokens.length, max) : tokens.length :
-      n;
-    (function slurp(remaining, acc) {
-      if (remaining === 0) {
+    (function slurp(m, acc) {
+      if ((logo.scope.in_parens && tokens.length === 0) ||
+        (!logo.scope.in_parens && m === 0)) {
         f(undefined, acc);
       } else {
         logo.eval(tokens, function(error, value) {
@@ -668,13 +664,13 @@ String.prototype.fmt = function()
                   if (error) {
                     f(error);
                   } else {
-                    slurp(remaining - 1, val);
+                    slurp(m - 1, val);
                   }
                 });
             }
           });
       }
-    })(n_, init);
+    })(n, init);
   }
 
   // Wrapper for show to handle undefined values
@@ -996,6 +992,26 @@ String.prototype.fmt = function()
         }, f);
     },
 
+    // MAKE varname value
+    //   command.  Assigns the value "value" to the variable named "varname",
+    //   which must be a word.  Variable names are case-insensitive.  If a
+    //   variable with the same name already exists, the value of that
+    //   variable is changed.  If not, a new global variable is created.
+    MAKE: function(tokens, f)
+    {
+      $eval_word(tokens, function(varname) {
+          var name = varname.value;
+          $eval(tokens, function(value) {
+              if (logo.scope.things.hasOwnProperty(name)) {
+                logo.scope.things[name] = value;
+              } else {
+                logo.scope_global.things[name] = value;
+              }
+              f();
+            }, f);
+        }, f);
+    },
+
     // MINUS num
     // TODO - num
     //   outputs the negative of its input.  Minus sign means unary minus if
@@ -1053,9 +1069,9 @@ String.prototype.fmt = function()
           if (!n.is_number()) {
             g(logo.error(logo.ERR_DOESNT_LIKE, $show(n)));
           } else {
-            g(undefined, logo.token(parseFloat(n.value) + sum));
+            g(undefined, logo.token(parseFloat(n.value) * sum));
           }
-        }, f, 2, logo.token(0));
+        }, f, 2, logo.token(1));
     },
 
     // QUOTIENT num1 num2
@@ -1197,19 +1213,14 @@ String.prototype.fmt = function()
     //   so that :FOO means THING "FOO.
     THING: function(tokens, f)
     {
-      logo.eval(tokens, g(f, function(varname) {
-          if (!varname.is_word()) {
-            return logo.error(logo.ERR_DOESNT_LIKE, $show(varname));
+      $eval_word(tokens, function(varname) {
+          var val = logo.scope.things[varname.value];
+          if (val) {
+            f(undefined, val);
           } else {
-            var value = varname.value in logo.scope.things ?
-              logo.scope.things[varname.value] : undefined;
-            if (value) {
-              f(undefined, value);
-            } else {
-              f(logo.error(logo.ERR_NO_VAR, $show(varname)));
-            }
+            f(logo.error(logo.ERR_NO_VAR, $show(varname)));
           }
-        }));
+        }, f);
     },
 
     // TO is handled in a special manner
@@ -1283,22 +1294,6 @@ String.prototype.fmt = function()
       logo.get_words(tokens).forEach(function(w) {
           logo.scope.things[w] = null;
         });
-    },
-
-    // MAKE varname value
-    //   command.  Assigns the value "value" to the variable named "varname",
-    //   which must be a word.  Variable names are case-insensitive.  If a
-    //   variable with the same name already exists, the value of that
-    //   variable is changed.  If not, a new global variable is created.
-    MAKE: function(tokens)
-    {
-      var varname = logo.get_word(tokens);
-      var value = logo.eval(tokens);
-      if (logo.scope.things.hasOwnProperty(varname)) {
-        logo.scope.things[varname] = value;
-      } else {
-        logo.scope_global.things[varname] = value;
-      }
     },
 
     // MEMBERP thing1 thing2
