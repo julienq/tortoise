@@ -144,8 +144,8 @@ String.prototype.fmt = function()
         if (logo.current_def) {
           f(logo.error(ERR_INTERNAL, "Shouldn't be in eval mode here?!"));
         } else {
-          var lines = [tokens.slice(0)];
-          logo.scope.current_procedure = tokens.shift();
+          var args = [];
+          var to = logo.scope.current_procedure = tokens.shift();
           if (tokens.length > 0) {
             // Read the name of the procedure
             var name = tokens.shift();
@@ -155,11 +155,10 @@ String.prototype.fmt = function()
               f(logo.error(logo.ERR_ALREADY_DEFINED, $show(name)));
             } else {
               // Read args: they are pairs of THING followed by a word
-              var args = [];
               (function read_var() {
                 if (tokens.length === 0) {
-                  logo.current_def = { name: name.value, args: args,
-                    lines: lines };
+                  logo.current_def = { to: to, name: name.value, args: args,
+                    source: input, tokens: [] };
                   f(undefined, false);
                 } else if (tokens.length === 1) {
                   f(logo.error(logo.ERR_DOESNT_LIKE, $show(tokens[0])));
@@ -196,55 +195,42 @@ String.prototype.fmt = function()
     }
   };
 
-  // Create a procedure from its definition (name, arguments and lines)
+  // Create a procedure from its definition (name, arguments, source and tokens)
   logo.make_procedure = function(definition)
   {
-    var name = definition.name;
-    var args = definition.args;
-    var lines = definition.lines;
     var p = function(tokens, f)
     {
       var scope = logo.scope;
-      logo.scope = { current_procedure: lines[0][1],
+      logo.scope = { current_procedure: logo.scope.current_procedure,
         things: Object.create(scope.things) };
-      var n = args.length;
+      var n = definition.args.length;
       (function eval_args(i) {
         if (i < n) {
           logo.eval(tokens, function(error, value) {
               if (error) {
                 f(error);
               } else {
-                logo.scope.things[args[i]] = value;
+                logo.scope.things[definition.args[i]] = value;
                 eval_args(i + 1);
               }
             });
         } else {
-          var m = lines.length - 1;
           delete logo.scope.current_procedure;
-          (function eval_lines(j, val) {
-            if (j < m) {
-              var tokens_ = lines[j].slice(0);
-              logo.eval_loop(tokens_, function(error, value) {
-                  if (error) {
-                    f(error);
-                  } else if (tokens_.length !== 0) {
-                    f(logo.error(ERR_INTERNAL,
-                        "There should be no input left?!"));
-                  } else {
-                    f(undefined, true);
-                  }
-                });
-            } else {
-              logo.scope = scope;
-              f(undefined, val);
-            }
-          })(1);
+          var tokens_ = definition.tokens.slice(0);
+          logo.eval_loop(tokens_, function(error, value) {
+              if (error) {
+                f(error);
+              } else if (tokens_.length !== 0) {
+                f(logo.error(logo.ERR_INTERNAL,
+                    "There should be no input left?!"));
+              } else {
+                f(undefined, value);
+              }
+            });
         }
       })(0);
     };
-    p._name = name;
-    p._args = args;
-    p._lines = lines;
+    p._source = definition.source;
     return p;
   };
 
@@ -257,7 +243,7 @@ String.prototype.fmt = function()
     }
     try {
       var tokens = logo.tokenize(input);
-      logo.current_def.lines.push(tokens);
+      logo.current_def.source += "\n" + input;
       if (tokens.length === 1 && tokens[0].is_procedure("END")) {
         // End function definition mode
         logo.procedures[logo.current_def.name] =
@@ -265,6 +251,7 @@ String.prototype.fmt = function()
         logo.current_def = null;
         f(undefined, true, []);
       } else {
+        logo.current_def.tokens = logo.current_def.tokens.concat(tokens);
         f(undefined, false, []);
       }
     } catch(e) {
@@ -1074,6 +1061,38 @@ String.prototype.fmt = function()
         }, f, 2, logo.token(1));
     },
 
+    // PRINTOUT contentslist
+    // PO contentslist
+	  //   command.  Prints to the write stream the definitions of all
+	  //    procedures, variables, and property lists named in the input
+    //    contents list.
+    PRINTOUT: function(tokens, f)
+    {
+      $eval_list(tokens, function(list) {
+          var words = list.value.slice(0);
+          (function po() {
+            if (words.length === 0) {
+              f();
+            } else {
+              var word = words.shift();
+              if (!word.is_word()) {
+                f(logo.error(logo.ERR_DOESNT_LIKE, $show(word)));
+              } else {
+                var p = logo.procedures[word.value.toUpperCase()];
+                if (!p) {
+                  f(logo.error(logo.ERR_DOESNT_LIKE, $show(word)));
+                } else if (!p._source) {
+                  f(logo.error(logo.ERR_IS_A_PRIMITIVE, $show(word)));
+                } else {
+                  console.log(p._source);
+                  po();
+                }
+              }
+            }
+          })();
+        }, f);
+    },
+
     // QUOTIENT num1 num2
     // (QUOTIENT num)
     // TODO num1 / num2
@@ -1306,36 +1325,6 @@ String.prototype.fmt = function()
     {
       var thing1 = logo.eval(tokens);
       return logo.bool(logo.eval(tokens).member_of(thing1));
-    },
-
-    // PRINTOUT contentslist
-    // PO contentslist
-	  //   command.  Prints to the write stream the definitions of all
-	  //    procedures, variables, and property lists named in the input
-    //    contents list.
-    PRINTOUT: function(tokens)
-    {
-      var what = logo.eval(tokens);
-      function print_f(token)
-      {
-        var f = logo.words[token.value.toUpperCase()];
-        if (f && f._name) {
-          f._lines.forEach(function(x) {
-              console.log(x.filter(function(t) {
-                  return t.surface || !t.eq_word("THING");
-                }).map(function(t) { return t.show(true); }).join(" "));
-            });
-        } else if (f) {
-          throw logo.error(22, token.show(true));
-        } else {
-          throw "Could not find a function named \"{0}\"".fmt(token.value);
-        }
-      }
-      if (what.is_word()) {
-        print_f(what);
-      } else {
-        what.value.forEach(print_f);
-      }
     },
 
   };
