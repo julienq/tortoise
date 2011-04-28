@@ -151,8 +151,10 @@ String.prototype.fmt = function()
   logo.ERR_UNEXPECTED_PAREN = 12;
   logo.ERR_HOW_TO = 13;
   logo.ERR_ALREADY_DEFINED = 15;
+  logo.ERR_IS_A_PRIMITIVE = 22;
   logo.ERR_CANT_USE_HERE = 23;
   logo.ERR_HOW_TO_FATAL = 24;
+  logo.ERR_NO_TEST = 25;
   logo.ERR_UNEXPECTED_BRACKET = 26;
 
   logo.error_messages = [];
@@ -165,15 +167,14 @@ String.prototype.fmt = function()
   logo.error_messages[logo.ERR_UNEXPECTED_PAREN] = "Unexpected \")\"";
   logo.error_messages[logo.ERR_WHAT_TO_DO] =
     "You don't say what to do with {1}";
+  logo.error_messages[logo.ERR_IS_A_PRIMITIVE] = "{1} is a primitive";
   logo.error_messages[logo.ERR_CANT_USE_HERE] = "Can't use {0} here";
   logo.error_messages[logo.ERR_HOW_TO] =
   logo.error_messages[logo.ERR_HOW_TO_FATAL] = "I don't know how to {1}";
   logo.error_messages[logo.ERR_ALREADY_DEFINED] = "{1} is already defined";
+  logo.error_messages[logo.ERR_NO_TEST] = "{0} without TEST";
   logo.error_messages[logo.ERR_UNEXPECTED_BRACKET] = "Unexpected \"]\"";
 
-  //logo.error_messages[22] = "{1} is a primitive";
-  //logo.error_messages[25] = "{0} without test";
-  //logo.error_messages[30] = logo.error_messages[9];
 
   // Eval the first token of a list of tokens. The token will then consume the
   // rest of list as necessary. The continuation function f(error, value,
@@ -459,6 +460,12 @@ String.prototype.fmt = function()
       token.is_word() && this.value === token.value;
   };
 
+  // Only lists can be evaluated in this context
+  logo.$token.eval_tokens = function(f)
+  {
+    f(logo.error(logo.ERR_DOESNT_LIKE, this.show()));
+  };
+
   // Test whether this token's value is a number
   logo.$token.is_number = function(token)
   {
@@ -510,7 +517,9 @@ String.prototype.fmt = function()
     }
   };
 
+  logo.$procedure.is_false = function() { return false; };
   logo.$procedure.is_number = function() { return false; };
+  logo.$procedure.is_true = function() { return false; };
   logo.$procedure.is_procedure = function(proc) { return this.value === proc; };
 
 
@@ -526,8 +535,30 @@ String.prototype.fmt = function()
         undefined, proto || logo.$list);
   };
 
+  // Evaluate the list as a list of tokens
+  // TODO check the current_procedure when evaluating the list
+  logo.$list.eval_tokens = function(f)
+  {
+    try {
+      var p = logo.scope.current_procedure;
+      var list = this.value.map(function(x) { return x.show(); }).join(" ");
+      var tokens = logo.tokenize(list);
+      (function loop(val) {
+        if (tokens.length === 0) {
+          f(undefined, val);
+        } else {
+          $eval(tokens, loop);
+        }
+      })();
+    } catch(e) {
+      f(e);
+    }
+  };
+
+  logo.$procedure.is_false = function() { return false; };
   logo.$list.is_list = function() { return true; };
   logo.$list.is_number = function() { return false; };
+  logo.$procedure.is_true = function() { return false; };
   logo.$list.is_word = function() { return false; };
   logo.$list.item = function(i) { return this.value[i - 1] || logo.list(); },
 
@@ -624,7 +655,8 @@ String.prototype.fmt = function()
 
   // Predefined procedures; from http://www.cs.berkeley.edu/~bh/usermanual
 
-  // Helper function for one-argument procedure.
+  // Helper function for a one-argument procedure. The function g must call the
+  // continuation f itself.
   function $eval(tokens, g, f)
   {
     logo.eval(tokens, function(error, value) {
@@ -634,7 +666,46 @@ String.prototype.fmt = function()
           g(value);
         }
       });
-  };
+  }
+
+  // Same as above, except that before invoking g with the value received from
+  // eval, the predicate p is applied to the value to check that this value is
+  // what g expects (for instance, test for a word, a list, etc.)
+  function $eval_like(tokens, p, g, f)
+  {
+    logo.eval(tokens, function(error, value) {
+        if (error) {
+          f(error);
+        } else if (!p(value)) {
+          f(logo.error(logo.ERR_DOESNT_LIKE, $show(value)));
+        } else {
+          g(value);
+        }
+      });
+  }
+
+  // Wrapper for show to handle undefined values
+  function $show(token)
+  {
+    return token && token.show ? token.show() : "undefined";
+  }
+
+
+  // IFTRUE and IFFALSE; i.e., functions that act of the last value of TEST
+  function if_test(tokens, f, p)
+  {
+    if (typeof logo.scope.test !== "boolean") {
+      f(logo.error(logo.ERR_NO_TEST));
+    } else {
+      $eval(tokens, function(list) {
+          if (logo.scope.test !== p) {
+            f();
+          } else {
+            list.eval_tokens(f);
+          }
+        }, f);
+    }
+  }
 
   // TODO ARRAY, MDARRAY, LISTTOARRAY, ARRAYTOLIST, REVERSE, GENSYM, FIRSTS,
   // BUTFIRSTS, MDITEM, PICK, REMOVE, REMDUP, QUOTED, SETITEM, MDSETITEM,
@@ -672,7 +743,7 @@ String.prototype.fmt = function()
     //   containing all but the first member of the input.
     BUTFIRST: function(tokens, f)
     {
-      logo.eval(tokens, e(f, function(v) { return v.butfirst(); }));
+      $eval(tokens, function(v) { f(undefined, v.butfirst()); }, f);
     },
 
     // BUTLAST wordorlist
@@ -682,7 +753,7 @@ String.prototype.fmt = function()
     //   containing all but the last member of the input.
     BUTLAST: function(tokens, f)
     {
-      logo.eval(tokens, e(f, function(v) { return v.butlast(); }));
+      $eval(tokens, function(v) { f(undefined, v.butlast()); }, f);
     },
 
     // COPYDEF newname oldname
@@ -821,6 +892,61 @@ String.prototype.fmt = function()
             }));
         }));
     },
+
+    // IF tf instructionlist
+    // TODO (IF tf instructionlist1 instructionlist2)
+	  //   command.  If the first input has the value TRUE, then IF runs
+    //   the second input.  If the first input has the value FALSE, then
+    //   IF does nothing.  (If given a third input, IF acts like IFELSE,
+    //   as described below.)  It is an error if the first input is not
+    //   either TRUE or FALSE.
+    //   For compatibility with earlier versions of Logo, if an IF
+    //   instruction is not enclosed in parentheses, but the first thing
+    //   on the instruction line after the second input expression is a
+    //   literal list (i.e., a list in square brackets), the IF is
+    //   treated as if it were IFELSE, but a warning message is given.
+    //   If this aberrant IF appears in a procedure body, the warning is
+    //   given only the first time the procedure is invoked in each Logo
+    //   session.
+    //IF: function(tokens, f) { ifelse(tokens, f, false); },
+
+    // IFELSE tf instructionlist1 instructionlist2
+    //   command or operation.  If the first input has the value TRUE, then
+    //   IFELSE runs the second input.  If the first input has the value FALSE,
+    //   then IFELSE runs the third input.  IFELSE outputs a value if the
+    //   instructionlist contains an expression that outputs a value.
+    IFELSE: function(tokens, f)
+    {
+      $eval_like(tokens,
+        function(t) { return t && t.is_true() || t.is_false(); },
+        function(tf) {
+          $eval_like(tokens, function(t) { return t && t.is_list(); },
+            function(list_then) {
+              $eval_like(tokens, function(t) { return t && t.is_list(); },
+                function(list_else) {
+                  if (tf.is_true()) {
+                    list_then.eval_tokens(f);
+                  } else {
+                    list_else.eval_tokens(f);
+                  }
+                }, f);
+            }, f);
+        }, f);
+    },
+
+    // IFFALSE instructionlist
+    // IFF instructionlist
+	  //   command.  Runs its input if the most recent TEST instruction had
+    //   a FALSE input.  The TEST must have been in the same procedure or a
+    //   superprocedure.
+    IFFALSE: function(tokens, f) { if_test(tokens, f, false); },
+
+    // IFTRUE instructionlist
+    // IFT instructionlist
+	  //   command.  Runs its input if the most recent TEST instruction had
+    //   a TRUE input.  The TEST must have been in the same procedure or a
+    //   superprocedure.
+    IFTRUE: function(tokens, f) { if_test(tokens, f, true); },
 
     // ITEM index thing
 	  //   if the "thing" is a word, outputs the "index"th character of the
@@ -1075,6 +1201,23 @@ String.prototype.fmt = function()
         }, 2, logo.token(0));
     },
 
+    // TEST tf
+	  //   command.  Remembers its input, which must be TRUE or FALSE, for use
+    //   by later IFTRUE or IFFALSE instructions.  The effect of TEST is local
+    //   to the procedure in which it is used; any corresponding IFTRUE or
+    //   IFFALSE must be in the same procedure or a subprocedure.
+    TEST: function(tokens, f)
+    {
+      $eval(tokens, function(tf) {
+          if (!(tf.is_true() || tf.is_false())) {
+            f(logo.error(logo.ERR_DOESNT_LIKE, tf.show()));
+          } else {
+            logo.scope.test = tf.is_true();
+            f();
+          }
+        }, f);
+    },
+
     // THING varname
     // :quoted.varname
 	  //   outputs the value of the variable whose name is the input.
@@ -1125,6 +1268,7 @@ String.prototype.fmt = function()
           f(undefined, logo.bool(thing.is_list()));
         }, f);
     },
+
   };
 
     /*
@@ -1151,44 +1295,6 @@ String.prototype.fmt = function()
           }
         });
     },
-
-    // IF tf instructionlist
-    // TODO (IF tf instructionlist1 instructionlist2)
-	  //   command.  If the first input has the value TRUE, then IF runs
-    //   the second input.  If the first input has the value FALSE, then
-    //   IF does nothing.  (If given a third input, IF acts like IFELSE,
-    //   as described below.)  It is an error if the first input is not
-    //   either TRUE or FALSE.
-    //   For compatibility with earlier versions of Logo, if an IF
-    //   instruction is not enclosed in parentheses, but the first thing
-    //   on the instruction line after the second input expression is a
-    //   literal list (i.e., a list in square brackets), the IF is
-    //   treated as if it were IFELSE, but a warning message is given.
-    //   If this aberrant IF appears in a procedure body, the warning is
-    //   given only the first time the procedure is invoked in each Logo
-    //   session.
-    IF: function(tokens) { return ifelse(tokens, false); },
-
-    // IFELSE tf instructionlist1 instructionlist2
-    //   command or operation.  If the first input has the value TRUE, then
-    //   IFELSE runs the second input.  If the first input has the value FALSE,
-    //   then IFELSE runs the third input.  IFELSE outputs a value if the
-    //   instructionlist contains an expression that outputs a value.
-    IFELSE: function(tokens) { return ifelse(tokens, true); },
-
-    // IFFALSE instructionlist
-    // IFF instructionlist
-	  //   command.  Runs its input if the most recent TEST instruction had
-    //   a FALSE input.  The TEST must have been in the same procedure or a
-    //   superprocedure.
-    IFFALSE: function(tokens) { if_true_false(tokens, false); },
-
-    // IFTRUE instructionlist
-    // IFT instructionlist
-	  //   command.  Runs its input if the most recent TEST instruction had
-    //   a TRUE input.  The TEST must have been in the same procedure or a
-    //   superprocedure.
-    IFTRUE: function(tokens) { if_true_false(tokens, true); },
 
     // LOCAL varname
     // LOCAL varnamelist
@@ -1267,61 +1373,8 @@ String.prototype.fmt = function()
       }
     },
 
-    // TEST tf
-	  //   command.  Remembers its input, which must be TRUE or FALSE, for use
-    //   by later IFTRUE or IFFALSE instructions.  The effect of TEST is local
-    //   to the procedure in which it is used; any corresponding IFTRUE or
-    //   IFFALSE must be in the same procedure or a subprocedure.
-    TEST: function(tokens)
-    {
-      logo.scope.test = logo.get_bool(tokens);
-    },
-
   };
 
-  // Abbrevs
-  logo.words.BF = logo.words.BUTFIRST;
-  logo.words.BL = logo.words.BUTLAST;
-  logo.words.IFF = logo.words.IFFALSE;
-  logo.words.IFT = logo.words.IFTRUE;
-  logo.words.PO = logo.words.PRINTOUT;
-  logo.words.PR = logo.words.PRINT;
-  logo.words.RL = logo.words.READLIST;
-  logo.words.SE = logo.words.SENTENCE;
-  logo.words["EMPTY?"] = logo.words.EMPTYP;
-  logo.words["EQUAL?"] = logo.words.EQUALP;
-  logo.words["LIST?"] = logo.words.LISTP;
-  logo.words["MEMBER?"] = logo.words.MEMBERP;
-  logo.words["NOTEQUAL?"] = logo.words.NOTEQUALP;
-  logo.words["WORD?"] = logo.words.WORDP;
-
-
-  // Helper functions for if/ifelse
-  var eval_list = function(list)
-  {
-    var tokens_ = logo.tokenize(list.toString());
-    var val;
-    while (tokens_.length > 0) val = logo.eval(tokens_);
-    return val;
-  };
-
-  // if and ifelse
-  function ifelse(tokens, has_else)
-  {
-    var p = logo.get_bool(tokens);
-    var then = logo.get_list(tokens);
-    var else_ = has_else || (tokens.length > 0 && tokens[0].is_list()) ?
-      logo.get_list(tokens) : undefined;
-    return p ? eval_list(then) : else_ ? eval_list(else_) : undefined;
-  }
-
-  // iftrue and iffalse
-  function if_true_false(tokens, p)
-  {
-    if (typeof logo.scope.test !== "boolean") throw logo.error(25);
-    var then = logo.get_list(tokens);
-    if (logo.scope.test === p) eval_list(then);
-  }
 
   // Get a list of words; either all remaining tokens in a group, or the
   // members of the first token if a list, otherwise the first token itself
@@ -1346,130 +1399,6 @@ String.prototype.fmt = function()
     if (words.length === 0) throw logo.error(6);
     return words;
   }
-
-
-  // Get all but the first characters of the value of the token
-  logo.$token.butfirst = function()
-  {
-    return logo.token(this.value.substr(1));
-  };
-
-  // Get all but the last character of the value of the token
-  logo.$token.butlast = function()
-  {
-    return logo.token(this.value.substr(0, this.value.length - 1));
-  };
-
-  // Get the ith item (as a general rule, the ith character; first index is 1)
-  logo.$token.item = function(i)
-  {
-    return logo.token(this.value.substr(i - 1, 1));
-  };
-
-  // TODO
-  logo.$token.member_of = function(token)
-  {
-    return false;
-  }
-
-  logo.$list.is_false = function() { return false; };
-  logo.$list.is_list = function() { return true; };
-  logo.$list.is_true = function() { return false; };
-  logo.$list.is_number = function() { return false; };
-  logo.$list.is_word = function() { return false; };
-
-  // Get the ith item of the list; an empty list if out of bounds
-  logo.$list.item = function(i)
-  {
-    var v = this.value[i - 1];
-    return v ? v : logo.token("");
-  };
-
-  logo.$list.butfirst = function()
-  {
-    var list = logo.list(this.value);
-    list.value.shift();
-    return list;
-  };
-
-  logo.$list.butlast = function()
-  {
-    var list = logo.list(this.value);
-    list.value.pop();
-    return list;
-  };
-
-
-  // Test whether this is the same as the given word
-  // TODO test for shortcuts
-  logo.$word.eq_word = function(w) { return this.value === w; };
-
-  logo.$word.is_datum = function() { return false; };
-  logo.$word.is_number = function() { return false; };
-
-
-  // Create a token with the value TRUE or FALSE depending on the predicate p
-  logo.bool = function(p)
-  {
-    return logo.token(p ? "TRUE" : "FALSE");
-  }
-
-  // Get a boolean value
-  logo.get_bool = function(tokens)
-  {
-    var token = logo.eval(tokens);
-    if (token.is_true()) {
-      return true;
-    } else if (token.is_false()) {
-      return false;
-    } else {
-      throw logo.error(4, token.show(true));
-    }
-  };
-
-  // Get a token that evaluates to an integer
-  logo.get_int = function(tokens)
-  {
-    var token = logo.eval(tokens);
-    var n = parseInt(token.value, 10);
-    if (isNaN(n)) {
-      throw logo.error(4, token.show(true));
-    }
-    return n;
-  };
-
-  // Get a list token
-  logo.get_list = function(tokens)
-  {
-    var token = logo.eval(tokens);
-    if (!token.is_list()) {
-      throw logo.error(4, token.show(true));
-    }
-    return token;
-  };
-
-  // Get a token that evaluates to a number
-  logo.get_num = function(tokens)
-  {
-    var token = logo.eval(tokens);
-    var n = parseFloat(token.value);
-    if (isNaN(n)) {
-      throw logo.error(4, token.show(true));
-    }
-    return n;
-  };
-
-  // Get a word token
-  logo.get_word = function(tokens)
-  {
-    var token = logo.eval(tokens);
-    if (!token.is_word()) {
-      throw logo.error(4, token.show(true));
-    }
-    return token.value;
-  };
-
-  logo.current_def = null;
 
   */
 
