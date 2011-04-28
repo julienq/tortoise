@@ -44,81 +44,6 @@ String.prototype.fmt = function()
   // TODO these shouldn't be global but passed around as the execution context
   logo.scope_global = logo.scope = { things: {} };
 
-  // Helper functions to deal with the asynchronous calls
-
-  // Use case: handles the error transparently; f is the original continuation
-  // and g a function called with the value argument of f (e.g. the result of
-  // evaluating the current token), which in turns returns a value. The
-  // continutation is called with the error if there was any from the
-  // evaluation of the current token, or the result of g(value). Example:
-  //
-  //   logo.eval(tokens, e(f, function(v) { return v.butfirst(); }));
-  //
-  function e(f, g)
-  {
-    return function(error, value) {
-      if (error) {
-        f(error);
-      } else {
-        var v = g(value);
-        if (v && v.error_code) {
-          f(v);
-        } else {
-          f(error, v);
-        }
-      }
-    };
-  }
-
-  // Use case: handle errors getting the current token, otherwise leave the
-  // inside function h (called with the token value) to call the f continuation
-  // itself. A function that needs two inputs can be called by chaining g then
-  // e, see FPUT:
-  //
-  //   logo.eval(tokens, g(f, function(thing) {
-  //       logo.eval(tokens, e(f, function(list) {
-  //           try { return list.fput(thing); } catch(e) { return e; }
-  //         }));
-  //     }));
-  //
-  function g(f, h)
-  {
-    return function(error, value) {
-      if (error) {
-        f(error);
-      } else {
-        h(value);
-      }
-    };
-  }
-
-  // Repeat the function h m times, or as many times as there are tokens in
-  // parens, and return the accumulated value initialized with init.
-  // The h function receives the current value (for the last token that was
-  // evaluated) and the current accumulator (from the previously evaluated
-  // tokens.) It updated the accumulator and returns an error if any.
-  // Example: LIST
-  //
-  //   r(tokens, f, function(v, l) { l.value.push(v); }, 2, logo.list());
-  //
-  function r(tokens, f, h, m, init)
-  {
-    (function loop(n, acc) {
-      if (n === 0) {
-        f(undefined, acc);
-      } else {
-        logo.eval(tokens, g(f, function(value) {
-            var error = h(value, acc);
-            if (error) {
-              f(error);
-            } else {
-              loop(n - 1, acc);
-            }
-          }));
-      }
-    })(logo.scope.in_parens ? tokens.length : m, init);
-  }
-
 
   // Create a token with the value TRUE or FALSE depending on the predicate p
   logo.bool = function(p)
@@ -466,10 +391,16 @@ String.prototype.fmt = function()
     f(logo.error(logo.ERR_DOESNT_LIKE, this.show()));
   };
 
+  // Test whether this token's value is an integer
+  logo.$token.is_integer = function(token)
+  {
+    return /^[-+]?\d+$/.test(this.value);
+  };
+
   // Test whether this token's value is a number
   logo.$token.is_number = function(token)
   {
-    return this.value !== "" && /^\d*(\.\d*)?$/.test(this.value);
+    return this.value !== "" && /^[+-]?\d*(\.\d*)?$/.test(this.value);
   };
 
   logo.$token.fput = function(thing)
@@ -518,6 +449,7 @@ String.prototype.fmt = function()
   };
 
   logo.$procedure.is_false = function() { return false; };
+  logo.$procedure.is_integer = function() { return false; };
   logo.$procedure.is_number = function() { return false; };
   logo.$procedure.is_true = function() { return false; };
   logo.$procedure.is_procedure = function(proc) { return this.value === proc; };
@@ -557,6 +489,7 @@ String.prototype.fmt = function()
 
   logo.$procedure.is_false = function() { return false; };
   logo.$list.is_list = function() { return true; };
+  logo.$list.is_integer = function() { return false; };
   logo.$list.is_number = function() { return false; };
   logo.$procedure.is_true = function() { return false; };
   logo.$list.is_word = function() { return false; };
@@ -684,6 +617,67 @@ String.prototype.fmt = function()
       });
   }
 
+  // Eval a token, making sure that it is a list
+  function $eval_bool(tokens, g, f)
+  {
+    $eval_like(tokens, function(t) { return t.is_true() || t.is_false(); },
+        g, f);
+  }
+
+  function $eval_word(tokens, g, f)
+  {
+    $eval_like(tokens, function(t) { return t.is_word(); }, g, f);
+  }
+
+  function $eval_integer(tokens, g, f)
+  {
+    $eval_like(tokens, function(t) { return t.is_integer(); }, g, f);
+  }
+
+  // Eval a token, making sure that it is a list
+  function $eval_list(tokens, g, f)
+  {
+    $eval_like(tokens, function(t) { return t.is_list(); }, g, f);
+  }
+
+  // Eval a token, making sure that it is a number
+  function $eval_number(tokens, g, f)
+  {
+    $eval_like(tokens, function(t) { return t.is_number(); }, g, f);
+  }
+
+  // Wrapper around eval to slurp arguments within parens, or an expected
+  // number of arguments. The function g gets called for each value with the
+  // current accumulated value, initialized by init, and a continuation that it
+  // must call on error or success with the new accumulated value. In some
+  // cases where parenthesized group expect a set number of arguments, max can
+  // be set (e.g. for (if test then else)
+  function $eval_slurp(tokens, g, f, n, init, max)
+  {
+    var n_ = logo.scope.in_parens ?
+      max ? Math.min(tokens.length, max) : tokens.length :
+      n;
+    (function slurp(remaining, acc) {
+      if (remaining === 0) {
+        f(undefined, acc);
+      } else {
+        logo.eval(tokens, function(error, value) {
+            if (error) {
+              f(error);
+            } else {
+              g(value, acc, function(error, val) {
+                  if (error) {
+                    f(error);
+                  } else {
+                    slurp(remaining - 1, val);
+                  }
+                });
+            }
+          });
+      }
+    })(n_, init);
+  }
+
   // Wrapper for show to handle undefined values
   function $show(token)
   {
@@ -720,20 +714,19 @@ String.prototype.fmt = function()
   // TEXTSIZE, SETFONT, FONT, MODULO, INT, ROUND, SQRT, POWER, EXP, LOG10, LN,
   // SIN, RADSIN, COS, RADCOS, ARCTAN, RADARCTAN, ISEQ, RSEQ, LESS?, GREATER?,
   // LESSEQUAL?, GREATEREQUAL?, RANDOM, RERANDOM, FORM, BITAND, BITOR, BITXOR,
-  // BITNOT, ASHIFT, LSHIFT, AND, OR, NOT, TO, DEFINE, TEXT, FULLTEXT, COPYDEF,
-  // PROP, GPROP, REMPROP, PLIST, PROCEDURE?, PRIMITIVE?, DEFINED?, NAME?,
-  // PLIST?, CONTENTS, BURIED, TRACED, STEPPED, PROCEDURES, PRIMITIVES, NAMES,
-  // PLISTS, NAMELIST, PLLIST, ARITY, NODES, POALL, POPS, PONS, POPLS, PON,
-  // POPL, POT, POTS, ERASE, ERALL, ERPS, ERNS, ERPLS, ERN, ERPL, BURY,
-  // BURYALL, BURYNAME, UNBURY, UNBURYALL, UNBURYNAME, BURIED?, TRACE, UNTRACE,
-  // TRACED?, STEP, UNSTEP, STEPPED?, EDIT, EDITFILE, EDALL, EDPS, EDNS, EDPLS,
-  // EDN, EDPL, SAVE, SAVEL, LOAD, CSLSLOAD, HELP, SETEDITOR, SETLIBLOC,
-  // SETHELPLOC, SETCSLSLOC, SETTEMPLOC, GC, .SETSEGMENTSIZE, RUN, RUNRESULT,
-  // REPEAT, FOREVER, REPCOUNT, STOP, OUTPUT, CATCH, THROW, ERROR, PAUSE,
-  // CONTINUE, WAIT, .MAYBEOUTPUT, GOTO, TAG, `, FOR, DO.WHILE, WHILE,
-  // DO.UNTIL, UNTIL, CASE, COND, APPLY, INVOKE, FOREACH, MAP, MAP.SE, FILTER,
-  // FIND, REDUCE, CROSSMAP, CASCADE, CASCADE.2, TRANSFER, .MACRO, MACRO?,
-  // MACROEXPAND
+  // BITNOT, ASHIFT, LSHIFT, AND, OR, NOT, TO, DEFINE, TEXT, FULLTEXT, PROP,
+  // GPROP, REMPROP, PLIST, PROCEDURE?, PRIMITIVE?, DEFINED?, NAME?, PLIST?,
+  // CONTENTS, BURIED, TRACED, STEPPED, PROCEDURES, PRIMITIVES, NAMES, PLISTS,
+  // NAMELIST, PLLIST, ARITY, NODES, POALL, POPS, PONS, POPLS, PON, POPL, POT,
+  // POTS, ERASE, ERALL, ERPS, ERNS, ERPLS, ERN, ERPL, BURY, BURYALL, BURYNAME,
+  // UNBURY, UNBURYALL, UNBURYNAME, BURIED?, TRACE, UNTRACE, TRACED?, STEP,
+  // UNSTEP, STEPPED?, EDIT, EDITFILE, EDALL, EDPS, EDNS, EDPLS, EDN, EDPL,
+  // SAVE, SAVEL, LOAD, CSLSLOAD, HELP, SETEDITOR, SETLIBLOC, SETHELPLOC,
+  // SETCSLSLOC, SETTEMPLOC, GC, .SETSEGMENTSIZE, RUN, RUNRESULT, REPEAT,
+  // FOREVER, REPCOUNT, STOP, OUTPUT, CATCH, THROW, ERROR, PAUSE, CONTINUE,
+  // WAIT, .MAYBEOUTPUT, GOTO, TAG, `, FOR, DO.WHILE, WHILE, DO.UNTIL, UNTIL,
+  // CASE, COND, APPLY, INVOKE, FOREACH, MAP, MAP.SE, FILTER, FIND, REDUCE,
+  // CROSSMAP, CASCADE, CASCADE.2, TRANSFER, .MACRO, MACRO?, MACROEXPAND
   logo.procedures = {
 
     // BUTFIRST wordorlist
@@ -766,34 +759,24 @@ String.prototype.fmt = function()
     //   This dialect uses "MAKE order," not "NAME order."
     COPYDEF: function(tokens, f)
     {
-      logo.eval(tokens, function(error, newname) {
-          if (error) {
-            f(error);
-          } else if (!newname.is_word()) {
-              f(logo.error(logo.ERR_DOESNT_LIKE, newname.show()));
+      $eval_word(tokens, function(newname) {
+          var n = newname.value.toUpperCase();
+          if (n in logo.procedures) {
+            // TODO this should be an error only for primitives
+            f(logo.error(logo.ERR_ALREADY_DEFINED, $show(newname)));
           } else {
-            var n = newname.value.toUpperCase();
-            if (n in logo.procedures) {
-              f(logo.error(logo.ERR_ALREADY_DEFINED, newname.show()));
-            } else {
-              logo.eval(tokens, function(error, oldname) {
-                  if (error) {
-                    f(error);
-                  } else if (!oldname.is_word()) {
-                    f(logo.error(logo.ERR_DOESNT_LIKE, oldname.show()));
-                  } else {
-                    var o = oldname.value.toUpperCase();
-                    if (!(o in logo.procedures)) {
-                      f(logo.error(logo.ERR_HOW_TO_FATAL, oldname.show()));
-                    } else {
-                      logo.procedures[n] = logo.procedures[o];
-                      f();
-                    }
-                  }
-                });
-            }
+            $eval_word(tokens, function(oldname) {
+                var o = oldname.value.toUpperCase();
+                var p = logo.procedures[o];
+                if (!p) {
+                  f(logo.error(logo.ERR_HOW_TO_FATAL, $show(oldname)));
+                } else {
+                  logo.procedures[n] = p;
+                  f();
+                }
+              }, f);
           }
-        });
+        }, f);
     },
 
     // COUNT thing
@@ -804,8 +787,8 @@ String.prototype.fmt = function()
     //   TODO arrays
     COUNT: function(tokens, f)
     {
-      logo.eval(tokens, e(f,
-            function(v) { return logo.token(v.value.length); }));
+      $eval(tokens, function(v) { f(undefined, logo.token(v.value.length)); },
+        f);
     },
 
     // DIFFERENCE num1 num2
@@ -816,17 +799,12 @@ String.prototype.fmt = function()
     //   by a nonspace.  (See also MINUS.)
     DIFFERENCE: function(tokens, f)
     {
-      logo.eval(tokens, g(f, function(num1) {
-          logo.eval(tokens, e(f, function(num2) {
-              var n1 = parseFloat(num1);
-              var n2 = parseFloat(num2);
-              return isNaN(n1) ?
-                  logo.error(logo.ERR_DOESNT_LIKE, num1.show()) :
-                isNaN(n2) ?
-                  logo.error(logo.ERR_DOESNT_LIKE, num2.show()) :
-                  logo.token(num1 - num2);
-            }));
-        }));
+      $eval_number(tokens, function(num1) {
+          $eval_number(tokens, function(num2) {
+              f(undefined,
+                logo.token(parseFloat(num1.value) - parseFloat(num2.value)));
+            }, f);
+        }, f);
     },
 
     // EMPTYP thing
@@ -872,7 +850,7 @@ String.prototype.fmt = function()
     //   TODO arrays
     FIRST: function(tokens, f)
     {
-      logo.eval(tokens, e(f, function(v) { return v.item(1); }));
+      $eval(tokens, function(thing) { f(undefined, thing.item(1)); }, f);
     },
 
     // FPUT thing list
@@ -882,19 +860,15 @@ String.prototype.fmt = function()
     //   equivalent to WORD.
     FPUT: function(tokens, f)
     {
-      logo.eval(tokens, g(f, function(thing) {
-          logo.eval(tokens, e(f, function(list) {
-              try {
-                return list.fput(thing);
-              } catch(e) {
-                return e;
-              }
-            }));
-        }));
+      $eval(tokens, function(thing) {
+          $eval(tokens, function(list) {
+              f(undefined, list.fput(thing));
+            }, f);
+        }, f);
     },
 
     // IF tf instructionlist
-    // TODO (IF tf instructionlist1 instructionlist2)
+    // (IF tf instructionlist1 instructionlist2)
 	  //   command.  If the first input has the value TRUE, then IF runs
     //   the second input.  If the first input has the value FALSE, then
     //   IF does nothing.  (If given a third input, IF acts like IFELSE,
@@ -908,7 +882,26 @@ String.prototype.fmt = function()
     //   If this aberrant IF appears in a procedure body, the warning is
     //   given only the first time the procedure is invoked in each Logo
     //   session.
-    //IF: function(tokens, f) { ifelse(tokens, f, false); },
+    IF: function(tokens, f)
+    {
+      $eval_bool(tokens, function(tf) {
+          $eval_list(tokens, function(list_then) {
+              if (logo.scope.in_parens && tokens.length > 0) {
+                $eval_list(tokens, function(list_else) {
+                    if (tf.is_true()) {
+                      list_then.eval_tokens(f);
+                    } else {
+                      list_else.eval_tokens(f);
+                    }
+                  }, f);
+              } else if (tf.is_true()) {
+                list_then.eval_tokens(f);
+              } else {
+                f();
+              }
+            }, f);
+        }, f);
+    },
 
     // IFELSE tf instructionlist1 instructionlist2
     //   command or operation.  If the first input has the value TRUE, then
@@ -917,13 +910,9 @@ String.prototype.fmt = function()
     //   instructionlist contains an expression that outputs a value.
     IFELSE: function(tokens, f)
     {
-      $eval_like(tokens,
-        function(t) { return t && t.is_true() || t.is_false(); },
-        function(tf) {
-          $eval_like(tokens, function(t) { return t && t.is_list(); },
-            function(list_then) {
-              $eval_like(tokens, function(t) { return t && t.is_list(); },
-                function(list_else) {
+      $eval_bool(tokens, function(tf) {
+          $eval_list(tokens, function(list_then) {
+              $eval_list(tokens, function(list_else) {
                   if (tf.is_true()) {
                     list_then.eval_tokens(f);
                   } else {
@@ -957,14 +946,11 @@ String.prototype.fmt = function()
     //   TODO array
     ITEM: function(tokens, f)
     {
-      logo.eval(tokens, g(f, function(index) {
-          logo.eval(tokens, e(f, function(thing) {
-              var i = parseInt(index, 10);
-              return isNaN(i) ?
-                logo.error(logo.ERR_DOESNT_LIKE, index.show()) :
-                thing.item(i);
-            }));
-        }));
+      $eval_integer(tokens, function(index) {
+          $eval(tokens, function(thing) {
+              f(undefined, thing.item(parseInt(index, 10)));
+            }, f);
+        }, f);
     },
 
     // LAST wordorlist
@@ -972,7 +958,7 @@ String.prototype.fmt = function()
     //   If the input is a list, outputs the last member of the list.
     LAST: function(tokens, f)
     {
-      logo.eval(tokens, e(f, function(v) { return v.item(v.value.length); }));
+      $eval(tokens, function(v) { f(undefined, v.item(v.value.length)); }, f);
     },
 
     // LIST thing1 thing2
@@ -981,7 +967,10 @@ String.prototype.fmt = function()
     //   Logo datum (word, list, or array).
     LIST: function(tokens, f)
     {
-      r(tokens, f, function(v, l) { l.value.push(v); }, 2, logo.list());
+      $eval_slurp(tokens, function(v, list, g) {
+          list.value.push(v);
+          g(undefined, list);
+        }, f, 2, logo.list());
     },
 
     // LISTP thing
@@ -1001,15 +990,11 @@ String.prototype.fmt = function()
     //   equivalent to WORD with its inputs in the other order.
     LPUT: function(tokens, f)
     {
-      logo.eval(tokens, g(f, function(thing) {
-          logo.eval(tokens, e(f, function(list) {
-              try {
-                return list.lput(thing);
-              } catch(e) {
-                return e;
-              }
-            }));
-        }));
+      $eval(tokens, function(thing) {
+          $eval(tokens, function(list) {
+              f(undefined, list.lput(thing));
+            }, f);
+        }, f);
     },
 
     // MINUS num
@@ -1022,12 +1007,9 @@ String.prototype.fmt = function()
     //     - 3 + 4		means	(-3)+4
     MINUS: function(tokens, f)
     {
-      logo.eval(tokens, e(f, function(num) {
-          var n = parseFloat(num);
-          return isNaN(n) ?
-            logo.error(logo.ERR_DOESNT_LIKE, num.show()) :
-            logo.token(-n);
-        }));
+      $eval_number(tokens, function(num) {
+          f(undefined, logo.token(-parseFloat(num.value)));
+        }, f);
     },
 
     // NOTEQUALP thing1 thing2
@@ -1056,7 +1038,10 @@ String.prototype.fmt = function()
     //   TODO streams, arrays
     PRINT: function(tokens, f)
     {
-      r(tokens, f, function(value) { console.log(value.toString()); }, 1);
+      $eval_slurp(tokens, function(v, _, g) {
+          console.log(v.toString());
+          g();
+        }, f, 1);
     },
 
     // PRODUCT num1 num2
@@ -1065,12 +1050,14 @@ String.prototype.fmt = function()
     //   outputs the product of its inputs.
     PRODUCT: function(tokens, f)
     {
-      r(tokens, f, function(v, p) {
-          var n = parseFloat(v.value);
-          if (isNaN(n)) return logo.error(logo.ERR_DOESNT_LIKE, v.show());
-            p.value *= parseFloat(v.value);
-          }, 2, logo.token(1));
-      },
+      $eval_slurp(tokens, function(n, sum, g) {
+          if (!n.is_number()) {
+            g(logo.error(logo.ERR_DOESNT_LIKE, $show(n)));
+          } else {
+            g(undefined, logo.token(parseFloat(n.value) + sum));
+          }
+        }, f, 2, logo.token(0));
+    },
 
     // QUOTIENT num1 num2
     // (QUOTIENT num)
@@ -1080,35 +1067,21 @@ String.prototype.fmt = function()
     //   (In other words, QUOTIENT 5 2 is 2.5, not 2, but QUOTIENT 4 2 is
     //   2, not 2.0 -- it does the right thing.)  With a single input,
     //   QUOTIENT outputs the reciprocal of the input.
+    //   TODO integers
     QUOTIENT: function(tokens, f)
     {
-      logo.eval(tokens, function(error, num) {
-          if (error) {
-            f(error);
-          } else {
-            var n = parseInt(num, 10);
-            if (isNaN(n)) {
-              f(logo.error(logo.ERR_DOESNT_LIKE, num.show()));
-            } else {
-              if (logo.scope.in_parens && tokens.length === 0) {
-                f(undefined, logo.token(1 / n));
-              } else {
-                logo.eval(tokens, function(error, num2) {
-                    if (error) {
-                      f(error);
-                    } else {
-                      var n2 = parseInt(num2, 10);
-                      if (isNaN(n2)) {
-                        f(logo.error(logo.ERR_DOESNT_LIKE, num2.show()));
-                      } else {
-                        f(undefined, logo.token(n / n2));
-                      }
-                    }
-                  });
-              }
-            }
-          }
-        });
+      if (logo.scope.in_parens) {
+        $eval_number(tokens, function(num) {
+            f(undefined, logo.token(1 / parseFloat(num.value)));
+          }, f);
+      } else {
+        $eval_number(tokens, function(num1) {
+            $eval_number(tokens, function(num2) {
+                f(undefined, logo.token(parseFloat(num1.value) /
+                    parseFloat(num2.value)))
+              }, f);
+          }, f);
+      }
     },
 
     // READLIST
@@ -1124,12 +1097,16 @@ String.prototype.fmt = function()
     READLIST: function(tokens, f)
     {
       logo.read(function(input) {
-          var list = logo.tokenize("[" + input + "]")[0];
-          if (list.is_list()) {
-            f(undefined, list);
-          } else {
-            f(logo.error(logo.ERR_INTERNAL,
-                  "{1} is not a list?!".fmt(list.show())));
+          try {
+            var list = logo.tokenize("[" + input + "]")[0];
+            if (list.is_list()) {
+              f(undefined, list);
+            } else {
+              f(logo.error(logo.ERR_INTERNAL,
+                    "{1} is not a list?!".fmt(list.show())));
+            }
+          } catch(e) {
+            f(e);
           }
         });
     },
@@ -1139,27 +1116,14 @@ String.prototype.fmt = function()
     //   integers and the result is an integer with the same sign as num1.
     REMAINDER: function(tokens, f)
     {
-      logo.eval(tokens, function(error, num1) {
-          if (error) {
-            f(error);
-          } else {
-            var n1 = parseFloat(num1);
-            if (isNaN(n1)) {
-              f(logo.error(logo.ERR_DOESNT_LIKE, num1.show()));
-            } else {
-              var sign = num1 < 0 ? -1 : 1;
-              logo.eval(tokens, function(error, num2) {
-                  var n2 = parseFloat(num2);
-                  if (isNaN(n2)) {
-                    f(logo.error(logo.ERR_DOESNT_LIKE, num2.show()));
-                  } else {
-                    f(undefined,
-                      logo.token(Math.abs(num1) % Math.abs(num2) * sign));
-                  }
-                });
-            }
-          }
-        });
+      $eval_integer(tokens, function(num1) {
+          var n1 = parseInt(num1, 10);
+          var sign = n1 < 0 ? -1 : 1;
+          $eval_integer(tokens, function(num2) {
+              var n2 = parseInt(num2, 10);
+              f(undefined, logo.token(sign * Math.abs(n1 % n2)));
+            }, f);
+        }, f);
     },
 
     // SENTENCE thing1 thing2
@@ -1170,13 +1134,14 @@ String.prototype.fmt = function()
     //   not lists, or the members of its inputs, if those inputs are lists.
     SENTENCE: function(tokens, f)
     {
-      r(tokens, f, function(v, l) {
-          if (v.is_list()) {
-            l.value = l.value.concat(v.value);
+      $eval_slurp(tokens, function(thing, sentence, g) {
+          if (thing.is_list()) {
+            sentence.value = sentence.value.concat(thing.value);
           } else {
-            l.value.push(v);
+            sentence.value.push(thing);
           }
-        }, 2, logo.list());
+          g(undefined, sentence);
+        }, f, 2, logo.list());
     },
 
     // SHOW thing
@@ -1185,7 +1150,10 @@ String.prototype.fmt = function()
     //   if an input is a list it is printed inside square brackets.
     SHOW: function(tokens, f)
     {
-      r(tokens, f, function(value) { console.log(value.show()); }, 1);
+      $eval_slurp(tokens, function(v, _, g) {
+          console.log($show(v));
+          g();
+        }, f, 1);
     },
 
     // SUM num1 num2
@@ -1194,11 +1162,13 @@ String.prototype.fmt = function()
     //   outputs the sum of its inputs.
     SUM: function(tokens, f)
     {
-      r(tokens, f, function(v, s) {
-          var n = parseFloat(v.value);
-          if (isNaN(n)) return logo.error(logo.ERR_DOESNT_LIKE, v.show());
-          s.value += parseFloat(v.value);
-        }, 2, logo.token(0));
+      $eval_slurp(tokens, function(n, sum, g) {
+          if (!n.is_number()) {
+            g(logo.error(logo.ERR_DOESNT_LIKE, $show(n)));
+          } else {
+            g(undefined, logo.token(parseFloat(n.value) + sum));
+          }
+        }, f, 2, logo.token(0));
     },
 
     // TEST tf
@@ -1251,12 +1221,13 @@ String.prototype.fmt = function()
     //   outputs a word formed by concatenating its inputs.
     WORD: function(tokens, f)
     {
-      r(tokens, f, function(v, w) {
+      $eval_slurp(tokens, function(v, w, g) {
           if (!v.is_word()) {
-            return logo.error(logo.ERR_DOESNT_LIKE, v.show());
+            g(logo.error(logo.ERR_DOESNT_LIKE, $show(v)));
+          } else {
+            g(undefined, logo.token(w.value + v.value));
           }
-          w.value += v.value;
-        }, 2, logo.token(""));
+        }, f, 2, logo.token(""));
     },
 
     // WORDP thing

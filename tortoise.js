@@ -25,6 +25,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE. */
 
+
 var fs = require("fs");
 var rl = require("readline");
 var logo = require("./logo");
@@ -34,10 +35,12 @@ var PROMPT = { eval: "? ", cont: "~ ", define: "> ", logo: "" };
 var MODE = "eval";
 var RLI = null;
 
-logo.procedures.BYE = function() { process.exit(); };
-
+// Line being read (in case of ~ it will span several calls to eval_line)
 var current_line = "";
 
+// Eval one line of input; remove comments and ~ before passing the input line
+// to be evaled (so that the tokenizer does not have to deal with comments.) In
+// case of a line ending with ~, read the next line before continuing.
 function eval_line(line)
 {
   var m = line.match(/~$/);
@@ -70,10 +73,13 @@ function eval_line(line)
   }
 }
 
+// Quit the REPL
+logo.procedures.BYE = function() { process.exit(); };
+
+// Read one line of input and call the continuation with the read line. This is
+// used by READLIST for instance.
 logo.read = function(f)
 {
-  MODE = "logo";
-  continuation = f;
   RLI.removeListener("line", eval_line);
   RLI.once("line", function(line) {
       f(line);
@@ -83,6 +89,8 @@ logo.read = function(f)
   RLI.prompt();
 };
 
+// Read the library file (split line by line) then start prompting the user for
+// commands to execute
 fs.readFile(LIB, "utf8", function(error, data) {
     if (error) throw error;
     data.split("\n").forEach(eval_line);
