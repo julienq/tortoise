@@ -42,5 +42,5 @@ COPYDEF "WORD? "WORDP
 
 
 ; The welcome message shows up when the library is loaded
-PR [Tortoise Logo v0.0.3 (https://github.com/julienq/tortoise)]
+PR [Tortoise Logo v0.0.4 (https://github.com/julienq/tortoise)]
 PR [Welcome to Logo]

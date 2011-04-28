@@ -59,8 +59,7 @@ String.prototype.fmt = function()
     var msg = logo.error_messages[code] || "Unknown error ({0})".fmt(code);
     var args = Array.prototype.slice.call(arguments, 1);
     // Add the current word to the list of argument
-    args.unshift(logo.scope.current_procedure ?
-        logo.scope.current_procedure.show() : undefined);
+    args.unshift($show(logo.scope.current_procedure));
     return { error_code: code, message: String.prototype.fmt.apply(msg, args) };
   };
 
@@ -151,9 +150,9 @@ String.prototype.fmt = function()
             // Read the name of the procedure
             var name = tokens.shift();
             if (!name.is_word()) {
-              f(logo.error(logo.ERR_DOESNT_LIKE, name.show()));
+              f(logo.error(logo.ERR_DOESNT_LIKE, $show(name)));
             } else if (name in logo.procedures) {
-              f(logo.error(logo.ERR_ALREADY_DEFINED, name.show()));
+              f(logo.error(logo.ERR_ALREADY_DEFINED, $show(name)));
             } else {
               // Read args: they are pairs of THING followed by a word
               var args = [];
@@ -163,14 +162,14 @@ String.prototype.fmt = function()
                     lines: lines };
                   f(undefined, false);
                 } else if (tokens.length === 1) {
-                  f(logo.error(logo.ERR_DOESNT_LIKE, tokens[0].show()));
+                  f(logo.error(logo.ERR_DOESNT_LIKE, $show(tokens[0])));
                 } else {
                   var thing = tokens.shift();
                   var word = tokens.shift();
                   if (!thing.is_procedure("THING")) {
-                    f(logo.error(ERR_DOESNT_LIKE, thing.show()));
+                    f(logo.error(ERR_DOESNT_LIKE, $show(thing)));
                   } else if (!word.is_word()) {
-                    f(logo.error(ERR_DOESNT_LIKE, word.show()));
+                    f(logo.error(ERR_DOESNT_LIKE, $show(word)));
                   } else {
                     args.push(word.value);
                     read_var();
@@ -354,7 +353,7 @@ String.prototype.fmt = function()
     is_true: function() { return /^true$/i.test(this.value); },
     is_word: function() { return true; },
     item: function(i) { return logo.token(this.value.substr(i - 1, 1)); },
-    show: function() { return this.surface || this.value; }
+    show: function(surface) { return surface && this.surface || this.value; }
   };
 
   // Create a token (as a quoted thing or a return value from a function)
@@ -373,7 +372,7 @@ String.prototype.fmt = function()
     if (logo.scope.current_procedure) {
       f(undefined, this);
     } else {
-      f(logo.error(logo.ERR_WHAT_TO_DO, this.show()));
+      f(logo.error(logo.ERR_WHAT_TO_DO, $show(this)));
     }
   };
 
@@ -388,7 +387,7 @@ String.prototype.fmt = function()
   // Only lists can be evaluated in this context
   logo.$token.eval_tokens = function(f)
   {
-    f(logo.error(logo.ERR_DOESNT_LIKE, this.show()));
+    f(logo.error(logo.ERR_DOESNT_LIKE, $show(this)));
   };
 
   // Test whether this token's value is an integer
@@ -408,7 +407,7 @@ String.prototype.fmt = function()
     if (thing.is_word() && thing.value.length === 1) {
       return logo.token(thing.value + this.value);
     } else {
-      throw logo.error(logo.ERR_DOESNT_LIKE, thing.show());
+      throw logo.error(logo.ERR_DOESNT_LIKE, $show(thing));
     }
   };
 
@@ -417,7 +416,7 @@ String.prototype.fmt = function()
     if (thing.is_word() && thing.value.length === 1) {
       return logo.token(this.value + thing.value);
     } else {
-      throw logo.error(logo.ERR_DOESNT_LIKE, thing.show());
+      throw logo.error(logo.ERR_DOESNT_LIKE, $show(thing));
     }
   };
 
@@ -444,7 +443,7 @@ String.prototype.fmt = function()
           f(error, value);
         });
     } else {
-      f(logo.error(logo.ERR_HOW_TO, this.show()));
+      f(logo.error(logo.ERR_HOW_TO, $show(this)));
     }
   };
 
@@ -681,7 +680,7 @@ String.prototype.fmt = function()
   // Wrapper for show to handle undefined values
   function $show(token)
   {
-    return token && token.show ? token.show() : "undefined";
+    return token && token.show ? token.show(true) : "undefined";
   }
 
 
@@ -1103,7 +1102,7 @@ String.prototype.fmt = function()
               f(undefined, list);
             } else {
               f(logo.error(logo.ERR_INTERNAL,
-                    "{1} is not a list?!".fmt(list.show())));
+                    "{1} is not a list?!".fmt($show(list))));
             }
           } catch(e) {
             f(e);
@@ -1180,7 +1179,7 @@ String.prototype.fmt = function()
     {
       $eval(tokens, function(tf) {
           if (!(tf.is_true() || tf.is_false())) {
-            f(logo.error(logo.ERR_DOESNT_LIKE, tf.show()));
+            f(logo.error(logo.ERR_DOESNT_LIKE, $show(tf)));
           } else {
             logo.scope.test = tf.is_true();
             f();
@@ -1200,14 +1199,14 @@ String.prototype.fmt = function()
     {
       logo.eval(tokens, g(f, function(varname) {
           if (!varname.is_word()) {
-            return logo.error(logo.ERR_DOESNT_LIKE, varname.show());
+            return logo.error(logo.ERR_DOESNT_LIKE, $show(varname));
           } else {
             var value = varname.value in logo.scope.things ?
               logo.scope.things[varname.value] : undefined;
             if (value) {
               f(undefined, value);
             } else {
-              f(logo.error(logo.ERR_NO_VAR, varname.show()));
+              f(logo.error(logo.ERR_NO_VAR, $show(varname)));
             }
           }
         }));
