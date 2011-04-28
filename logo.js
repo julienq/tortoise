@@ -216,6 +216,11 @@ String.prototype.fmt = function()
             });
         } else {
           delete logo.scope.current_procedure;
+          var exit = logo.scope.exit;
+          logo.scope.exit = function(value) {
+            logo.scope.exit = exit;
+            f(undefined, value);
+          };
           var tokens_ = definition.tokens.slice(0);
           logo.eval_loop(tokens_, function(error, value) {
               if (error) {
@@ -705,10 +710,10 @@ String.prototype.fmt = function()
   // UNSTEP, STEPPED?, EDIT, EDITFILE, EDALL, EDPS, EDNS, EDPLS, EDN, EDPL,
   // SAVE, SAVEL, LOAD, CSLSLOAD, HELP, SETEDITOR, SETLIBLOC, SETHELPLOC,
   // SETCSLSLOC, SETTEMPLOC, GC, .SETSEGMENTSIZE, RUN, RUNRESULT, REPEAT,
-  // FOREVER, REPCOUNT, STOP, OUTPUT, CATCH, THROW, ERROR, PAUSE, CONTINUE,
-  // WAIT, .MAYBEOUTPUT, GOTO, TAG, `, FOR, DO.WHILE, WHILE, DO.UNTIL, UNTIL,
-  // CASE, COND, APPLY, INVOKE, FOREACH, MAP, MAP.SE, FILTER, FIND, REDUCE,
-  // CROSSMAP, CASCADE, CASCADE.2, TRANSFER, .MACRO, MACRO?, MACROEXPAND
+  // FOREVER, REPCOUNT, CATCH, THROW, ERROR, PAUSE, CONTINUE, WAIT,
+  // .MAYBEOUTPUT, GOTO, TAG, `, FOR, DO.WHILE, WHILE, DO.UNTIL, UNTIL, CASE,
+  // COND, APPLY, INVOKE, FOREACH, MAP, MAP.SE, FILTER, FIND, REDUCE, CROSSMAP,
+  // CASCADE, CASCADE.2, TRANSFER, .MACRO, MACRO?, MACROEXPAND
   logo.procedures = {
 
     // BUTFIRST wordorlist
@@ -1028,6 +1033,17 @@ String.prototype.fmt = function()
         }, f);
     },
 
+    // OUTPUT value
+    // OP value
+	  //   command.  Ends the running of the procedure in which it appears.
+    //   That procedure outputs the value "value" to the context in which
+    //   it was invoked.  Don't be confused: OUTPUT itself is a command,
+    //   but the procedure that invokes OUTPUT is an operation.
+    OUTPUT: function(tokens, f)
+    {
+      $eval(tokens, function(value) { logo.scope.exit(value); }, f);
+    },
+
     // PRINT thing
     // PR thing
     // (PRINT thing1 thing2 ...)
@@ -1188,6 +1204,15 @@ String.prototype.fmt = function()
           console.log($show(v));
           g();
         }, f, 1);
+    },
+
+    // STOP
+	  //   command.  Ends the running of the procedure in which it appears.
+    //   Control is returned to the context in which that procedure was
+    //   invoked.  The stopped procedure does not output a value.
+    STOP: function(tokens, f)
+    {
+      logo.scope.exit();
     },
 
     // SUM num1 num2

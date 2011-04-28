@@ -13,9 +13,11 @@ Usage
 
 The command-line version can be run with Node.js; the REPL is `tortoise.js`:
 
+  ```
   > **node tortoise.js**
   Tortoise Logo v0.0.x (https://github.com/julienq/tortoise)
   Welcome to Logo
   ? 
+  ```
 
 There are no command-line options at the moment.
