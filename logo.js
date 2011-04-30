@@ -26,6 +26,10 @@
  * POSSIBILITY OF SUCH DAMAGE. */
 
 
+// Bugs
+// (print word "a "b "c) -> word thinks it's in parens, but print is
+// ignore readlist -> some garbage leftover
+
 // Simple format function for messages. Use {0}, {1}... as slots for
 // parameters. Missing parameters are replaced with the empty string.
 // Example: "The value of {0} is {1}".fmt(name, value)
@@ -384,7 +388,7 @@ String.prototype.fmt = function()
   // Handle FPUT for words
   logo.$token.fput = function(thing)
   {
-    if (thing.is_word() && thing.toString().length === 1) {
+    if (thing.is_word && thing.toString().length === 1) {
       return logo.word(thing.toString() + this.toString());
     } else {
       throw logo.error(logo.ERR_DOESNT_LIKE, $show(thing));
@@ -394,7 +398,7 @@ String.prototype.fmt = function()
   // Handle LPUT for words
   logo.$token.lput = function(thing)
   {
-    if (thing.is_word() && thing.value.length === 1) {
+    if (thing.is_word && thing.value.length === 1) {
       return logo.word(this.toString() + thing.toString());
     } else {
       throw logo.error(logo.ERR_DOESNT_LIKE, $show(thing));
@@ -445,7 +449,7 @@ String.prototype.fmt = function()
     if (typeof value === "number") {
       proto = value === parseInt(value.toString(), 10) ?
         logo.$integer : logo.$number;
-    } else if (/^[+-]?((\d+(\.\d*)?)|(\d*\.\d+))/.test(value)) {
+    } else if (/^[+-]?((\d+(\.\d*)?)|(\d*\.\d+))$/.test(value)) {
       var v = parseFloat(value);
       proto = isNaN(v) ? logo.$token :
         v === parseInt(value, 10) ? logo.$integer : logo.$number;
@@ -495,6 +499,7 @@ String.prototype.fmt = function()
       count: { enumerable: true, configurable: true,
           value: function() { return this.value.length; } },
       is_list: { enumerable: true, configurable: true, value: true },
+      is_word: { enumerable: true, value: false },
       item:  { enumerable: true,
           value: function(i) { return this.value[i - 1]; }
         },
@@ -1324,7 +1329,7 @@ String.prototype.fmt = function()
           if (!n.is_number()) {
             g(logo.error(logo.ERR_DOESNT_LIKE, $show(n)));
           } else {
-            g(undefined, logo.word(n.value * product));
+            g(undefined, logo.word(n.value * product.value));
           }
         }, f, 2, logo.word(1));
     },
@@ -1336,8 +1341,8 @@ String.prototype.fmt = function()
     //    contents list.
     PRINTOUT: function(tokens, f)
     {
-      $eval_list(tokens, function(list) {
-          var words = list.value.slice(0);
+      $eval(tokens, function(list) {
+          var words = list.is_word ? [list] : list.value.slice(0);
           (function po() {
             if (words.length === 0) {
               f();
@@ -1433,7 +1438,7 @@ String.prototype.fmt = function()
     SENTENCE: function(tokens, f)
     {
       $eval_slurp(tokens, function(thing, sentence, g) {
-          if (thing.is_list()) {
+          if (thing.is_list) {
             sentence.value = sentence.value.concat(thing.value);
           } else {
             sentence.value.push(thing);
@@ -1470,9 +1475,9 @@ String.prototype.fmt = function()
           if (!n.is_number) {
             g(logo.error(logo.ERR_DOESNT_LIKE, $show(n)));
           } else {
-            g(undefined, logo.word(n.value + sum));
+            g(undefined, logo.word(n.value + sum.value));
           }
-        }, f, 2, logo.token(0));
+        }, f, 2, logo.word(0));
     },
 
     // TEST tf
