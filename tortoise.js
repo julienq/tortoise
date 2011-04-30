@@ -76,6 +76,12 @@ function eval_line(line)
 // Quit the REPL
 logo.procedures.BYE = function() { process.exit(); };
 
+logo.warn = function(warning)
+{
+  process.stderr.write("Warning #{0}: {1}\n".fmt(warning.error_code,
+        warning.message));
+};
+
 // Read one line of input and call the continuation with the read line. This is
 // used by READLIST for instance.
 logo.read = function(f)

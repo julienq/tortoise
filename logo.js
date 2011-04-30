@@ -41,15 +41,8 @@ String.prototype.fmt = function()
 // node.js
 (function(logo) {
 
-  // TODO these shouldn't be global but passed around as the execution context
   logo.scope_global = logo.scope = { things: {} };
 
-
-  // Create a token with the value TRUE or FALSE depending on the predicate p
-  logo.bool = function(p)
-  {
-    return logo.token(p ? "TRUE" : "FALSE");
-  }
 
   // Make an error object from the given error code and additional arguments.
   // The first argument is implied to be the current procedure (if any.) An
@@ -75,6 +68,7 @@ String.prototype.fmt = function()
   logo.ERR_UNEXPECTED_PAREN = 12;
   logo.ERR_HOW_TO = 13;
   logo.ERR_ALREADY_DEFINED = 15;
+  logo.ERR_ASSUMING_IFELSE = 19;
   logo.ERR_IS_A_PRIMITIVE = 22;
   logo.ERR_CANT_USE_HERE = 23;
   logo.ERR_HOW_TO_FATAL = 24;
@@ -91,6 +85,8 @@ String.prototype.fmt = function()
   logo.error_messages[logo.ERR_UNEXPECTED_PAREN] = "Unexpected \")\"";
   logo.error_messages[logo.ERR_WHAT_TO_DO] =
     "You don't say what to do with {1}";
+  logo.error_messages[logo.ERR_ASSUMING_IFELSE] =
+    "Assuming you mean IFELSE, not IF";
   logo.error_messages[logo.ERR_IS_A_PRIMITIVE] = "{1} is a primitive";
   logo.error_messages[logo.ERR_CANT_USE_HERE] = "Can't use {0} here";
   logo.error_messages[logo.ERR_HOW_TO] =
@@ -149,7 +145,7 @@ String.prototype.fmt = function()
           if (tokens.length > 0) {
             // Read the name of the procedure
             var name = tokens.shift();
-            if (!name.is_word()) {
+            if (!name.is_word) {
               f(logo.error(logo.ERR_DOESNT_LIKE, $show(name)));
             } else if (name in logo.procedures) {
               f(logo.error(logo.ERR_ALREADY_DEFINED, $show(name)));
@@ -167,7 +163,7 @@ String.prototype.fmt = function()
                   var word = tokens.shift();
                   if (!thing.is_procedure("THING")) {
                     f(logo.error(ERR_DOESNT_LIKE, $show(thing)));
-                  } else if (!word.is_word()) {
+                  } else if (!word.is_word) {
                     f(logo.error(ERR_DOESNT_LIKE, $show(word)));
                   } else {
                     args.push(word.value);
@@ -201,8 +197,9 @@ String.prototype.fmt = function()
     var p = function(tokens, f)
     {
       var scope = logo.scope;
-      logo.scope = { current_procedure: logo.scope.current_procedure,
-        things: Object.create(scope.things) };
+      logo.scope = { things: Object.create(scope.things),
+        current_procedure: logo.scope.current_procedure,
+        exit: function(value) { logo.scope = scope; f(undefined, value); } };
       var n = definition.args.length;
       (function eval_args(i) {
         if (i < n) {
@@ -216,11 +213,6 @@ String.prototype.fmt = function()
             });
         } else {
           delete logo.scope.current_procedure;
-          var exit = logo.scope.exit;
-          logo.scope.exit = function(value) {
-            logo.scope.exit = exit;
-            f(undefined, value);
-          };
           var tokens_ = definition.tokens.slice(0);
           logo.eval_loop(tokens_, function(error, value) {
               if (error) {
@@ -229,7 +221,7 @@ String.prototype.fmt = function()
                 f(logo.error(logo.ERR_INTERNAL,
                     "There should be no input left?!"));
               } else {
-                f(undefined, value);
+                logo.scope.exit(value);
               }
             });
         }
@@ -254,6 +246,7 @@ String.prototype.fmt = function()
         logo.procedures[logo.current_def.name] =
           logo.make_procedure(logo.current_def);
         logo.current_def = null;
+        logo.scope.current_procedure = null;
         f(undefined, true, []);
       } else {
         logo.current_def.tokens = logo.current_def.tokens.concat(tokens);
@@ -297,7 +290,7 @@ String.prototype.fmt = function()
         }
       } else if (current_list) {
         m = input.match(/^[^\s\[\]]+/);
-        push_token(logo.token(m[0]));
+        push_token(logo.word(m[0]));
       } else if (m = input.match(/^\(/)) {
         var g = logo.group();
         g.parent = current_group;
@@ -311,13 +304,13 @@ String.prototype.fmt = function()
         }
       } else {
         if (m = input.match(/^"([^\s\[\]\(\);]*)/)) {
-          push_token(logo.token(m[1], m[0]));
+          push_token(logo.word(m[1], m[0]));
         } else if (m = input.match(/^((\d+(\.\d*)?)|(\d*\.\d+))/)) {
-          push_token(logo.token(m[0], m[0]));
+          push_token(logo.word(m[0], m[0]));
         } else if (m = input.match(/^(:?)([^\s\[\]\(\)+\-*\/=<>;]+)/)) {
           if (m[1] === ":") {
             push_token(logo.procedure("THING"));
-            push_token(logo.token(m[2], m[0]));
+            push_token(logo.word(m[2], m[0]));
           } else {
             push_token(logo.procedure(m[0].toUpperCase(), m[0]));
           }
@@ -332,29 +325,37 @@ String.prototype.fmt = function()
 
 
   // A token is simply a wrapper around a value
+  // TODO and undefined token
   logo.$token =
   {
-    butfirst: function() { return logo.token(this.value.substr(1)); },
-    butlast: function()
-      { return logo.token(this.value.substr(0, this.value.length - 1)); },
-    toString: function() { return this.value; },
-    is_datum: function() { return true; },
-    is_false: function() { return /^false$/i.test(this.value); },
-    is_list: function() { return false; },
-    is_procedure: function(proc) { return false; },
-    is_true: function() { return /^true$/i.test(this.value); },
-    is_word: function() { return true; },
-    item: function(i) { return logo.token(this.value.substr(i - 1, 1)); },
-    show: function(surface) { return surface && this.surface || this.value; }
+    butfirst: function() { return logo.word(this.toString().substr(1)); },
+    butlast: function() {
+        return logo.word(this.toString().substr(0, this.toString().length - 1));
+      },
+    count: function() { return this.toString().length; },
+    is_procedure: function() { return false; },
+    is_word: true,
+    item: function(i) { return logo.word(this.toString().substr(i - 1, 1)); },
+    show: function(surface) {
+        return surface && this.surface || this.toString();
+      },
+    show_internals: function() {
+        return "token: value={{0}}, surface={{1}}"
+          .fmt(this.value, this.surface);
+      },
+    toString: function() { return this.value.toString(); },
   };
 
-  // Create a token (as a quoted thing or a return value from a function)
+
+  // A procedure invocation token
+  logo.$procedure = Object.create(logo.$token);
+
   logo.token = function(value, surface, proto)
   {
-    var o = Object.create(proto || logo.$token);
-    o.value = value;
-    if (surface) o.surface = surface;
-    return o;
+    var token= Object.create(proto || logo.$token);
+    token.value = value;
+    if (surface) token.surface = surface;
+    return token;
   };
 
   // Simply return the value of the token, unless we're at the top execution
@@ -371,9 +372,7 @@ String.prototype.fmt = function()
   // Test whether this word is equal to the given token, in the sense of EQUALP
   logo.$token.equalp = function(token)
   {
-    return (this.is_number() && token.is_number() &&
-        parseFloat(this.value) === parseFloat(token.value)) ||
-      token.is_word() && this.value === token.value;
+    return token.is_word && this.value === token.value;
   };
 
   // Only lists can be evaluated in this context
@@ -382,38 +381,87 @@ String.prototype.fmt = function()
     f(logo.error(logo.ERR_DOESNT_LIKE, $show(this)));
   };
 
-  // Test whether this token's value is an integer
-  logo.$token.is_integer = function(token)
-  {
-    return /^[-+]?\d+$/.test(this.value);
-  };
-
-  // Test whether this token's value is a number
-  logo.$token.is_number = function(token)
-  {
-    return this.value !== "" && /^[+-]?\d*(\.\d*)?$/.test(this.value);
-  };
-
+  // Handle FPUT for words
   logo.$token.fput = function(thing)
   {
-    if (thing.is_word() && thing.value.length === 1) {
-      return logo.token(thing.value + this.value);
+    if (thing.is_word() && thing.toString().length === 1) {
+      return logo.word(thing.toString() + this.toString());
     } else {
       throw logo.error(logo.ERR_DOESNT_LIKE, $show(thing));
     }
   };
 
+  // Handle LPUT for words
   logo.$token.lput = function(thing)
   {
     if (thing.is_word() && thing.value.length === 1) {
-      return logo.token(this.value + thing.value);
+      return logo.word(this.toString() + thing.toString());
     } else {
       throw logo.error(logo.ERR_DOESNT_LIKE, $show(thing));
     }
   };
 
-  // A procedure invocation token
-  logo.$procedure = Object.create(logo.$token);
+
+  logo.$number = Object.create(logo.$token, {
+      equalp: { enumerable: true, value: function(token) {
+          return token.is_number && this.value === token.value;
+        } },
+      is_number: { enumerable: true, value: true },
+      show_internals: { enumerable: true, configurable: true,
+        value: function() {
+          return "number: value={{0}}, surface={{1}}"
+            .fmt(this.value, this.surface);
+        } },
+    });
+
+  logo.$integer = Object.create(logo.$number, {
+      equalp: { enumerable: true, value: function(token) {
+          return token.is_integer && this.value === token.value;
+        } },
+      is_integer: { enumerable: true, value: true },
+      show_internals: { enumerable: true, configurable: true,
+        value: function() {
+          return "integer: value={{0}}, surface={{1}}"
+            .fmt(this.value, this.surface);
+        } },
+    });
+
+  logo.$boolean = Object.create(logo.$token, {
+      is_false: { enumerable: true, get: function() { return !this.value; } },
+      is_true: { enumerable: true, get: function() { return this.value; } },
+      show_internals: { enumerable: true, configurable: true,
+        value: function() {
+          return "boolean: value={{0}}, surface={{1}}"
+            .fmt(this.value, this.surface);
+        } },
+    });
+
+
+  // Create a word token of the correct type given the value (i.e. a word, a
+  // number, an integer or a boolean.)
+  logo.word = function(value, surface)
+  {
+    var proto = logo.$token;
+    if (typeof value === "number") {
+      proto = value === parseInt(value.toString(), 10) ?
+        logo.$integer : logo.$number;
+    } else if (/^[+-]?((\d+(\.\d*)?)|(\d*\.\d+))/.test(value)) {
+      var v = parseFloat(value);
+      proto = isNaN(v) ? logo.$token :
+        v === parseInt(value, 10) ? logo.$integer : logo.$number;
+      value = isNaN(v) ? value : v;
+    } else if (typeof value === "boolean") {
+      proto = logo.$boolean;
+    } else if (/^true$/i.test(value)) {
+      proto = logo.$boolean;
+      value = true;
+    } else if (/^false$/i.test(value)) {
+      proto = logo.$boolean;
+      value = false;
+    }
+    return logo.token(value, surface, proto);
+  };
+
 
   // Create a new procedure token with the given name
   logo.procedure = function(value, surface, proto)
@@ -439,23 +487,25 @@ String.prototype.fmt = function()
     }
   };
 
-  logo.$procedure.is_false = function() { return false; };
-  logo.$procedure.is_integer = function() { return false; };
-  logo.$procedure.is_number = function() { return false; };
-  logo.$procedure.is_true = function() { return false; };
   logo.$procedure.is_procedure = function(proc) { return this.value === proc; };
 
 
   // The list token has an array of tokens for values
-  logo.$list = Object.create(logo.$token);
+  logo.$list = Object.create(logo.$token, {
+      count: { enumerable: true, configurable: true,
+          value: function() { return this.value.length; } },
+      is_list: { enumerable: true, configurable: true, value: true },
+      item:  { enumerable: true,
+          value: function(i) { return this.value[i - 1]; }
+        },
+      show_internals: { enumerable: true, configurable: true,
+        value: function() { return "list: {0}".fmt(this.show()); } },
+    });
 
-  // Create a list; if given a parameter (must be an array) then deep copy the
-  // array and set it as the value
-  logo.list = function(l, proto)
+  // Create an empty list
+  logo.list = function(proto)
   {
-    var copy = function(x) { return x instanceof Array ? x.map(copy) : x; };
-    return logo.token(l ? l instanceof Array ? l.map(copy) : [l] : [],
-        undefined, proto || logo.$list);
+    return logo.token([], undefined, proto || logo.$list);
   };
 
   // Evaluate the list as a list of tokens
@@ -463,7 +513,6 @@ String.prototype.fmt = function()
   logo.$list.eval_tokens = function(f)
   {
     try {
-      var p = logo.scope.current_procedure;
       var list = this.value.map(function(x) { return x.show(); }).join(" ");
       var tokens = logo.tokenize(list);
       (function loop(val) {
@@ -478,48 +527,49 @@ String.prototype.fmt = function()
     }
   };
 
-  logo.$procedure.is_false = function() { return false; };
-  logo.$list.is_list = function() { return true; };
-  logo.$list.is_integer = function() { return false; };
-  logo.$list.is_number = function() { return false; };
-  logo.$procedure.is_true = function() { return false; };
-  logo.$list.is_word = function() { return false; };
-  logo.$list.item = function(i) { return this.value[i - 1] || logo.list(); },
-
-  logo.$list.butfirst = function() { return logo.list(this.value.slice(1)); };
+  logo.$list.butfirst = function()
+  {
+    var list = logo.list();
+    list.value = this.value.slice(1);
+    return list;
+  };
 
   logo.$list.butlast = function()
   {
-    return logo.list(this.value.slice(0, this.value.length - 1));
+    var list = logo.list();
+    list.value = this.value.slice(0, this.value.length - 1);
+    return list;
   };
 
   logo.$list.equalp = function(token)
   {
     return (function deep_eq(x, y)
     {
-      if (x.is_list() && y.is_list() && x.value.length === y.value.length) {
+      if (x.is_list && y.is_list && x.value.length === y.value.length) {
         for (var eq = true, i = 0, n = x.value.length; eq && i < n; ++i) {
           eq = deep_eq(x.value[i], y.value[i]);
         }
         return eq;
       } else {
-        return x.is_word() && x.equalp(y);
+        return x.is_word && x.equalp(y);
       }
     })(this, token);
   };
 
   logo.$list.fput = function(t)
   {
-    var list = this.value.slice(0);
-    list.unshift(t);
-    return logo.list(list);
+    var list = logo.list();
+    list.value = this.value.slice(0);
+    list.value.unshift(t);
+    return list;
   };
 
   logo.$list.lput = function(t)
   {
-    var list = this.value.slice(0);
-    list.push(t);
-    return logo.list(list);
+    var list = logo.list();
+    list.value = this.value.slice(0);
+    list.value.shift(t);
+    return list;
   };
 
   // Show the values of the list with the enclosing brackets
@@ -535,18 +585,20 @@ String.prototype.fmt = function()
   {
     return this.value.map(function(x) {
         var s = x.toString();
-        return x.is_list() ? "[" + s + "]" : s;
+        return x.is_list ? "[" + s + "]" : s;
       }).join(" ");
   };
 
 
   // A group is a meta token that contains a parenthesized group
-  logo.$group = Object.create(logo.$list);
+  logo.$group = Object.create(logo.$list, {
+      is_list: { enumerable: true, value: false }
+    });
 
   logo.group = function(proto)
   {
-    return logo.list(undefined, proto || logo.$group);
-  }
+    return logo.list(proto || logo.$group);
+  };
 
   logo.$group.apply = function(tokens, f)
   {
@@ -563,21 +615,17 @@ String.prototype.fmt = function()
           }
         });
     } else {
-      f(error, undefined);
+      f(error);
     }
   };
-
-  logo.$group.is_list = function() { return false; };
 
   logo.$group.show = function()
   {
     return "(" + this.value.map(function(x) { return x.show(); }).join(" ") +
       ")";
-  }
+  };
 
 
-
-  // Predefined procedures; from http://www.cs.berkeley.edu/~bh/usermanual
 
   // Helper function for a one-argument procedure. The function g must call the
   // continuation f itself.
@@ -609,32 +657,30 @@ String.prototype.fmt = function()
   }
 
   // Eval a token, making sure that it is a list
-  function $eval_bool(tokens, g, f)
+  function $eval_boolean(tokens, g, f)
   {
-    $eval_like(tokens, function(t) { return t.is_true() || t.is_false(); },
+    $eval_like(tokens, function(t) { return t.is_true || t.is_false; },
         g, f);
-  }
-
-  function $eval_word(tokens, g, f)
-  {
-    $eval_like(tokens, function(t) { return t.is_word(); }, g, f);
   }
 
   function $eval_integer(tokens, g, f)
   {
-    $eval_like(tokens, function(t) { return t.is_integer(); }, g, f);
+    $eval_like(tokens, function(t) { return t.is_integer; }, g, f);
   }
 
-  // Eval a token, making sure that it is a list
   function $eval_list(tokens, g, f)
   {
-    $eval_like(tokens, function(t) { return t.is_list(); }, g, f);
+    $eval_like(tokens, function(t) { return t.is_list; }, g, f);
   }
 
-  // Eval a token, making sure that it is a number
   function $eval_number(tokens, g, f)
   {
-    $eval_like(tokens, function(t) { return t.is_number(); }, g, f);
+    $eval_like(tokens, function(t) { return t.is_number; }, g, f);
+  }
+
+  function $eval_word(tokens, g, f)
+  {
+    $eval_like(tokens, function(t) { return t.is_word; }, g, f);
   }
 
   // Wrapper around eval to slurp arguments within parens, or an expected
@@ -665,12 +711,42 @@ String.prototype.fmt = function()
     })(n, init);
   }
 
+  function $get_token(tokens, g, f)
+  {
+    if (tokens.length === 0) {
+      f(logo.error(logo.ERR_NOT_ENOUGH_INPUT));
+    } else {
+      var token = tokens.shift();
+      g(token);
+    }
+  }
+
+  // Get a token whichi is not evaled, but must still conform to some predicate
+  // (e.g. $get_list below to get a list token for IF.)
+  function $get_like(tokens, p, g, f)
+  {
+    if (tokens.length === 0) {
+      f(logo.error(logo.ERR_NOT_ENOUGH_INPUT));
+    } else {
+      var token = tokens.shift();
+      if (!p(token)) {
+        f(logo.error(logo.ERR_DOESNT_LIKE, $show(token)));
+      } else {
+        g(token);
+      }
+    }
+  }
+
+  function $get_list(tokens, g, f)
+  {
+    $get_like(tokens, function(t) { return t.is_list; }, g, f);
+  }
+
   // Wrapper for show to handle undefined values
   function $show(token)
   {
     return token && token.show ? token.show(true) : "undefined";
   }
-
 
   // IFTRUE and IFFALSE; i.e., functions that act of the last value of TEST
   function if_test(tokens, f, p)
@@ -688,6 +764,8 @@ String.prototype.fmt = function()
     }
   }
 
+
+  // Predefined procedures; from http://www.cs.berkeley.edu/~bh/usermanual
   // TODO ARRAY, MDARRAY, LISTTOARRAY, ARRAYTOLIST, REVERSE, GENSYM, FIRSTS,
   // BUTFIRSTS, MDITEM, PICK, REMOVE, REMDUP, QUOTED, SETITEM, MDSETITEM,
   // .SETFIRST, .SETBF, .SETITEM, PUSH, POP, QUEUE, DEQUEUE, ARRAY?, BEFORE?,
@@ -699,22 +777,80 @@ String.prototype.fmt = function()
   // SETWRITEPOS, READPOS, WRITEPOS, EOF?, FILE?, KEY?, CLEARTEXT, SETCURSOR,
   // CURSOR, SETMARGINS, SETTEXTCOLOR, INCREASEFONT, DECREASEFONT, SETTEXTSIZE,
   // TEXTSIZE, SETFONT, FONT, MODULO, INT, ROUND, SQRT, POWER, EXP, LOG10, LN,
-  // SIN, RADSIN, COS, RADCOS, ARCTAN, RADARCTAN, ISEQ, RSEQ, LESS?, GREATER?,
-  // LESSEQUAL?, GREATEREQUAL?, RANDOM, RERANDOM, FORM, BITAND, BITOR, BITXOR,
-  // BITNOT, ASHIFT, LSHIFT, AND, OR, NOT, TO, DEFINE, TEXT, FULLTEXT, PROP,
-  // GPROP, REMPROP, PLIST, PROCEDURE?, PRIMITIVE?, DEFINED?, NAME?, PLIST?,
-  // CONTENTS, BURIED, TRACED, STEPPED, PROCEDURES, PRIMITIVES, NAMES, PLISTS,
-  // NAMELIST, PLLIST, ARITY, NODES, POALL, POPS, PONS, POPLS, PON, POPL, POT,
-  // POTS, ERASE, ERALL, ERPS, ERNS, ERPLS, ERN, ERPL, BURY, BURYALL, BURYNAME,
-  // UNBURY, UNBURYALL, UNBURYNAME, BURIED?, TRACE, UNTRACE, TRACED?, STEP,
-  // UNSTEP, STEPPED?, EDIT, EDITFILE, EDALL, EDPS, EDNS, EDPLS, EDN, EDPL,
-  // SAVE, SAVEL, LOAD, CSLSLOAD, HELP, SETEDITOR, SETLIBLOC, SETHELPLOC,
-  // SETCSLSLOC, SETTEMPLOC, GC, .SETSEGMENTSIZE, RUN, RUNRESULT, REPEAT,
-  // FOREVER, REPCOUNT, CATCH, THROW, ERROR, PAUSE, CONTINUE, WAIT,
-  // .MAYBEOUTPUT, GOTO, TAG, `, FOR, DO.WHILE, WHILE, DO.UNTIL, UNTIL, CASE,
-  // COND, APPLY, INVOKE, FOREACH, MAP, MAP.SE, FILTER, FIND, REDUCE, CROSSMAP,
-  // CASCADE, CASCADE.2, TRANSFER, .MACRO, MACRO?, MACROEXPAND
+  // SIN, RADSIN, COS, RADCOS, ARCTAN, RADARCTAN, ISEQ, RSEQ, RANDOM, RERANDOM,
+  // FORM, BITAND, BITOR, BITXOR, BITNOT, ASHIFT, LSHIFT, AND, OR, NOT, TO,
+  // DEFINE, TEXT, FULLTEXT, PROP, GPROP, REMPROP, PLIST, PROCEDURE?,
+  // PRIMITIVE?, DEFINED?, NAME?, PLIST?, CONTENTS, BURIED, TRACED, STEPPED,
+  // PROCEDURES, NAMES, PLISTS, NAMELIST, PLLIST, ARITY, NODES, POALL, POPS,
+  // PONS, POPLS, PON, POPL, POT, POTS, ERASE, ERALL, ERPS, ERNS, ERPLS, ERN,
+  // ERPL, BURY, BURYALL, BURYNAME, UNBURY, UNBURYALL, UNBURYNAME, BURIED?,
+  // TRACE, UNTRACE, TRACED?, STEP, UNSTEP, STEPPED?, EDIT, EDITFILE, EDALL,
+  // EDPS, EDNS, EDPLS, EDN, EDPL, SAVE, SAVEL, LOAD, CSLSLOAD, HELP,
+  // SETEDITOR, SETLIBLOC, SETHELPLOC, SETCSLSLOC, SETTEMPLOC, GC,
+  // .SETSEGMENTSIZE, RUN, RUNRESULT, REPEAT, FOREVER, REPCOUNT, CATCH, THROW,
+  // ERROR, PAUSE, CONTINUE, WAIT, .MAYBEOUTPUT, GOTO, TAG, `, FOR, DO.WHILE,
+  // WHILE, DO.UNTIL, UNTIL, CASE, COND, APPLY, INVOKE, FOREACH, MAP, MAP.SE,
+  // FILTER, FIND, REDUCE, CROSSMAP, CASCADE, CASCADE.2, TRANSFER, .MACRO,
+  // MACRO?, MACROEXPAND
   logo.procedures = {
+
+    // AND tf1 tf2
+    // (AND tf1 tf2 tf3 ...)
+    //   outputs TRUE if all inputs are TRUE, otherwise FALSE.  All inputs
+    //   must be TRUE or FALSE.  (Comparison is case-insensitive regardless
+    //   of the value of CASEIGNOREDP.  That is, "true" or "True" or "TRUE"
+    //   are all the same.)  An input can be a list, in which case it is
+    //   taken as an expression to run; that expression must produce a TRUE
+    //   or FALSE value.  List expressions are evaluated from left to right;
+    //   as soon as a FALSE value is found, the remaining inputs are not
+    //   examined.  Example:
+    //     MAKE "RESULT AND [NOT (:X = 0)] [(1 / :X) > .5]
+    //   to avoid the division by zero if the first part is false.
+    // TODO refactor; extract get_slurp
+    AND: function(tokens, f)
+    {
+      var predicates = [];
+      function eval_predicates()
+      {
+        function check(tf)
+        {
+          if (tf.is_false) {
+            f(undefined, tf);
+          } else if (tf.is_true) {
+            eval_predicates();
+          } else {
+            f(logo.error(logo.ERR_DOESNT_LIKE, $show(tf)));
+          }
+        }
+        if (predicates.length === 0) {
+          f(undefined, logo.word(true));
+        } else {
+          var p = predicates.shift();
+          if (p.is_list) {
+            p.eval_tokens(function(error, value) {
+                if (error) {
+                  f(error);
+                } else {
+                  check(value);
+                }
+              });
+          } else {
+            check(p);
+          }
+        }
+      }
+      (function slurp(n) {
+        if ((logo.scope.in_parens && tokens.length === 0) ||
+          (!logo.scope.in_parens && n === 0)) {
+          eval_predicates();
+        } else {
+          $get_token(tokens, function(p) {
+              predicates.push(p);
+              slurp(n - 1);
+            }, f);
+        }
+      })(2);
+    },
 
     // BUTFIRST wordorlist
     // BF wordorlist
@@ -748,8 +884,7 @@ String.prototype.fmt = function()
     {
       $eval_word(tokens, function(newname) {
           var n = newname.value.toUpperCase();
-          if (n in logo.procedures) {
-            // TODO this should be an error only for primitives
+          if (n in logo.procedures && !n._source) {
             f(logo.error(logo.ERR_ALREADY_DEFINED, $show(newname)));
           } else {
             $eval_word(tokens, function(oldname) {
@@ -774,7 +909,7 @@ String.prototype.fmt = function()
     //   TODO arrays
     COUNT: function(tokens, f)
     {
-      $eval(tokens, function(v) { f(undefined, logo.token(v.value.length)); },
+      $eval(tokens, function(v) { f(undefined, logo.word(v.count())); },
         f);
     },
 
@@ -788,8 +923,7 @@ String.prototype.fmt = function()
     {
       $eval_number(tokens, function(num1) {
           $eval_number(tokens, function(num2) {
-              f(undefined,
-                logo.token(parseFloat(num1.value) - parseFloat(num2.value)));
+              f(undefined, logo.word(num1.value - num2.value));
             }, f);
         }, f);
     },
@@ -801,7 +935,7 @@ String.prototype.fmt = function()
     EMPTYP: function(tokens, f)
     {
       $eval(tokens, function(thing) {
-          f(undefined, logo.bool(thing.value.length === 0))
+          f(undefined, logo.word(thing.count() === 0))
         }, f);
     },
 
@@ -824,7 +958,7 @@ String.prototype.fmt = function()
     {
       $eval(tokens, function(thing1) {
           $eval(tokens, function(thing2) {
-              f(undefined, logo.bool(thing1.equalp(thing2)));
+              f(undefined, logo.word(thing1.equalp(thing2)));
             }, f);
         }, f);
     },
@@ -854,6 +988,32 @@ String.prototype.fmt = function()
         }, f);
     },
 
+    // GREATEREQUALP num1 num2
+    // GREATEREQUAL? num1 num2
+    // (TODO) num1 >= num2
+    //   outputs TRUE if its first input is greater than or equal to its second.
+    GREATEREQUALP: function(tokens, f)
+    {
+      $eval_number(tokens, function(num1) {
+          $eval_number(tokens, function(num2) {
+              f(undefined, logo.word(num1 >= num2));
+            }, f);
+        }, f);
+    },
+
+    // GREATERP num1 num2
+    // GREATER? num1 num2
+    // (TODO) num1 > num2
+    //   outputs TRUE if its first input is strictly greater than its second.
+    GREATERP: function(tokens, f)
+    {
+      $eval_number(tokens, function(num1) {
+          $eval_number(tokens, function(num2) {
+              f(undefined, logo.word(num1 > num2));
+            }, f);
+        }, f);
+    },
+
     // IF tf instructionlist
     // (IF tf instructionlist1 instructionlist2)
 	  //   command.  If the first input has the value TRUE, then IF runs
@@ -871,17 +1031,21 @@ String.prototype.fmt = function()
     //   session.
     IF: function(tokens, f)
     {
-      $eval_bool(tokens, function(tf) {
+      $eval_boolean(tokens, function(tf) {
           $eval_list(tokens, function(list_then) {
-              if (logo.scope.in_parens && tokens.length > 0) {
+              if ((logo.scope.in_parens && tokens.length > 0 ||
+                  tokens.length > 0 && tokens[0].is_list)) {
+                if (!logo.scope.in_parens) {
+                  logo.warn(logo.error(logo.ERR_ASSUMING_IFELSE));
+                }
                 $eval_list(tokens, function(list_else) {
-                    if (tf.is_true()) {
+                    if (tf.is_true) {
                       list_then.eval_tokens(f);
                     } else {
                       list_else.eval_tokens(f);
                     }
                   }, f);
-              } else if (tf.is_true()) {
+              } else if (tf.is_true) {
                 list_then.eval_tokens(f);
               } else {
                 f();
@@ -900,7 +1064,7 @@ String.prototype.fmt = function()
       $eval_bool(tokens, function(tf) {
           $eval_list(tokens, function(list_then) {
               $eval_list(tokens, function(list_else) {
-                  if (tf.is_true()) {
+                  if (tf.is_true) {
                     list_then.eval_tokens(f);
                   } else {
                     list_else.eval_tokens(f);
@@ -935,7 +1099,7 @@ String.prototype.fmt = function()
     {
       $eval_integer(tokens, function(index) {
           $eval(tokens, function(thing) {
-              f(undefined, thing.item(parseInt(index, 10)));
+              f(undefined, thing.item(index));
             }, f);
         }, f);
     },
@@ -945,7 +1109,33 @@ String.prototype.fmt = function()
     //   If the input is a list, outputs the last member of the list.
     LAST: function(tokens, f)
     {
-      $eval(tokens, function(v) { f(undefined, v.item(v.value.length)); }, f);
+      $eval(tokens, function(v) { f(undefined, v.item(v.count())); }, f);
+    },
+
+    // LESSEQUALP num1 num2
+    // LESSEQUAL? num1 num2
+    // (TODO) num1 <= num2
+    //   outputs TRUE if its first input is less than or equal to its second.
+    LESSEQUALP: function(tokens, f)
+    {
+      $eval_number(tokens, function(num1) {
+          $eval_number(tokens, function(num2) {
+              f(undefined, logo.word(num1 <= num2));
+            }, f);
+        }, f);
+    },
+
+    // LESSP num1 num2
+    // LESS? num1 num2
+    // (TODO) num1 < num2
+    //   outputs TRUE if its first input is strictly less than its second.
+    LESSP: function(tokens, f)
+    {
+      $eval_number(tokens, function(num1) {
+          $eval_number(tokens, function(num2) {
+              f(undefined, logo.word(num1 < num2));
+            }, f);
+        }, f);
     },
 
     // LIST thing1 thing2
@@ -966,8 +1156,56 @@ String.prototype.fmt = function()
     LISTP: function(tokens, f)
     {
       $eval(tokens, function(thing) {
-          f(undefined, logo.bool(thing.is_list()));
+          f(undefined, logo.word(thing.is_list));
         }, f);
+    },
+
+    // LOCAL varname
+    // LOCAL varnamelist
+    // (LOCAL varname1 varname2 ...)
+    //   command.  Accepts as inputs one or more words, or a list of
+    //   words.  A variable is created for each of these words, with
+    //   that word as its name.  The variables are local to the
+    //   currently running procedure.  Logo variables follow dynamic
+    //   scope rules; a variable that is local to a procedure is
+    //   available to any subprocedure invoked by that procedure.
+    //   The variables created by LOCAL have no initial value; they
+    //   must be assigned a value (e.g., with MAKE) before the procedure
+    //   attempts to read their value.
+    LOCAL: function(tokens, f)
+    {
+      var varnames = [];
+      if (logo.scope.in_parens) {
+        (function slurp() {
+          if (tokens.length > 0) {
+            $eval_word(tokens, function(varname) {
+                varnames.push(varname);
+                slurp();
+              }, f);
+          }
+        })();
+      } else {
+        $eval(tokens, function(thing) {
+            if (thing.is_word) {
+              varnames.push(thing);
+            } else {
+              varnames = thing.value.slice(0);
+            }
+          });
+      }
+      (function local() {
+        if (varnames.length === 0) {
+          f();
+        } else {
+          var varname = varnames.shift();
+          if (!varname.is_word) {
+            f(logo.error(logo.ERR_DOESNT_LIKE, $show(varname)));
+          } else {
+            logo.scope.things[varname.toString().toUpperCase()] = null;
+            local();
+          }
+        }
+      })();
     },
 
     // LPUT thing list
@@ -1015,7 +1253,7 @@ String.prototype.fmt = function()
     MINUS: function(tokens, f)
     {
       $eval_number(tokens, function(num) {
-          f(undefined, logo.token(-parseFloat(num.value)));
+          f(undefined, logo.word(-num));
         }, f);
     },
 
@@ -1028,7 +1266,7 @@ String.prototype.fmt = function()
     {
       $eval(tokens, function(thing1) {
           $eval(tokens, function(thing2) {
-              f(undefined, logo.bool(!thing1.equalp(thing2)));
+              f(undefined, logo.word(!thing1.equalp(thing2)));
             }, f);
         }, f);
     },
@@ -1042,6 +1280,20 @@ String.prototype.fmt = function()
     OUTPUT: function(tokens, f)
     {
       $eval(tokens, function(value) { logo.scope.exit(value); }, f);
+    },
+
+    // PRIMITIVES
+    //   outputs a list of the names of all primitive procedures
+    //   in the workspace.  Note that this is a list of names, not a
+    //   contents list.  (However, procedures that require a contents list
+    //   as input will accept this list.)
+    PRIMITIVES: function(tokens, f)
+    {
+      var list = logo.list();
+      for (var p in logo.procedures) {
+        if (!logo.procedures[p]._source) list.value.push(logo.word(p));
+      }
+      f(undefined, list);
     },
 
     // PRINT thing
@@ -1068,13 +1320,13 @@ String.prototype.fmt = function()
     //   outputs the product of its inputs.
     PRODUCT: function(tokens, f)
     {
-      $eval_slurp(tokens, function(n, sum, g) {
+      $eval_slurp(tokens, function(n, product, g) {
           if (!n.is_number()) {
             g(logo.error(logo.ERR_DOESNT_LIKE, $show(n)));
           } else {
-            g(undefined, logo.token(parseFloat(n.value) * sum));
+            g(undefined, logo.word(n.value * product));
           }
-        }, f, 2, logo.token(1));
+        }, f, 2, logo.word(1));
     },
 
     // PRINTOUT contentslist
@@ -1091,7 +1343,7 @@ String.prototype.fmt = function()
               f();
             } else {
               var word = words.shift();
-              if (!word.is_word()) {
+              if (!word.is_word) {
                 f(logo.error(logo.ERR_DOESNT_LIKE, $show(word)));
               } else {
                 var p = logo.procedures[word.value.toUpperCase()];
@@ -1117,18 +1369,16 @@ String.prototype.fmt = function()
     //   (In other words, QUOTIENT 5 2 is 2.5, not 2, but QUOTIENT 4 2 is
     //   2, not 2.0 -- it does the right thing.)  With a single input,
     //   QUOTIENT outputs the reciprocal of the input.
-    //   TODO integers
     QUOTIENT: function(tokens, f)
     {
       if (logo.scope.in_parens) {
         $eval_number(tokens, function(num) {
-            f(undefined, logo.token(1 / parseFloat(num.value)));
+            f(undefined, logo.word(1 / num.value));
           }, f);
       } else {
         $eval_number(tokens, function(num1) {
             $eval_number(tokens, function(num2) {
-                f(undefined, logo.token(parseFloat(num1.value) /
-                    parseFloat(num2.value)))
+                f(undefined, logo.word(num1 / num2));
               }, f);
           }, f);
       }
@@ -1149,7 +1399,7 @@ String.prototype.fmt = function()
       logo.read(function(input) {
           try {
             var list = logo.tokenize("[" + input + "]")[0];
-            if (list.is_list()) {
+            if (list.is_list) {
               f(undefined, list);
             } else {
               f(logo.error(logo.ERR_INTERNAL,
@@ -1167,11 +1417,9 @@ String.prototype.fmt = function()
     REMAINDER: function(tokens, f)
     {
       $eval_integer(tokens, function(num1) {
-          var n1 = parseInt(num1, 10);
-          var sign = n1 < 0 ? -1 : 1;
+          var sign = num1 < 0 ? -1 : 1;
           $eval_integer(tokens, function(num2) {
-              var n2 = parseInt(num2, 10);
-              f(undefined, logo.token(sign * Math.abs(n1 % n2)));
+              f(undefined, logo.word(sign * Math.abs(num1 % num2)));
             }, f);
         }, f);
     },
@@ -1201,7 +1449,7 @@ String.prototype.fmt = function()
     SHOW: function(tokens, f)
     {
       $eval_slurp(tokens, function(v, _, g) {
-          console.log($show(v));
+          console.log(v.show());
           g();
         }, f, 1);
     },
@@ -1210,10 +1458,7 @@ String.prototype.fmt = function()
 	  //   command.  Ends the running of the procedure in which it appears.
     //   Control is returned to the context in which that procedure was
     //   invoked.  The stopped procedure does not output a value.
-    STOP: function(tokens, f)
-    {
-      logo.scope.exit();
-    },
+    STOP: function(tokens, f) { logo.scope.exit(); },
 
     // SUM num1 num2
     // (SUM num1 num2 num3 ...)
@@ -1222,10 +1467,10 @@ String.prototype.fmt = function()
     SUM: function(tokens, f)
     {
       $eval_slurp(tokens, function(n, sum, g) {
-          if (!n.is_number()) {
+          if (!n.is_number) {
             g(logo.error(logo.ERR_DOESNT_LIKE, $show(n)));
           } else {
-            g(undefined, logo.token(parseFloat(n.value) + sum));
+            g(undefined, logo.word(n.value + sum));
           }
         }, f, 2, logo.token(0));
     },
@@ -1241,7 +1486,7 @@ String.prototype.fmt = function()
           if (!(tf.is_true() || tf.is_false())) {
             f(logo.error(logo.ERR_DOESNT_LIKE, $show(tf)));
           } else {
-            logo.scope.test = tf.is_true();
+            logo.scope.test = tf.is_true;
             f();
           }
         }, f);
@@ -1276,12 +1521,12 @@ String.prototype.fmt = function()
     WORD: function(tokens, f)
     {
       $eval_slurp(tokens, function(v, w, g) {
-          if (!v.is_word()) {
+          if (!v.is_word) {
             g(logo.error(logo.ERR_DOESNT_LIKE, $show(v)));
           } else {
-            g(undefined, logo.token(w.value + v.value));
+            g(undefined, logo.word(w.toString() + v.toString()));
           }
-        }, f, 2, logo.token(""));
+        }, f, 2, logo.word(""));
     },
 
     // WORDP thing
@@ -1290,10 +1535,21 @@ String.prototype.fmt = function()
     WORDP: function(tokens, f)
     {
       $eval(tokens, function(thing) {
-          f(undefined, logo.bool(thing.is_list()));
+          f(undefined, logo.word(thing.is_word));
         }, f);
     },
 
+
+    // My own extensions
+
+    // Show internals of values, used for debugging
+    SHOWINTERNALS: function(tokens, f)
+    {
+      $eval_slurp(tokens, function(v, _, g) {
+          console.log(v.show_internals());
+          g();
+        }, f, 1);
+    },
   };
 
     /*
@@ -1318,25 +1574,6 @@ String.prototype.fmt = function()
           if (!w in logo.scope_global.things) {
             logo.scope_global.things[w] = null;
           }
-        });
-    },
-
-    // LOCAL varname
-    // LOCAL varnamelist
-    // (LOCAL varname1 varname2 ...)
-    //   command.  Accepts as inputs one or more words, or a list of
-    //   words.  A variable is created for each of these words, with
-    //   that word as its name.  The variables are local to the
-    //   currently running procedure.  Logo variables follow dynamic
-    //   scope rules; a variable that is local to a procedure is
-    //   available to any subprocedure invoked by that procedure.
-    //   The variables created by LOCAL have no initial value; they
-    //   must be assigned a value (e.g., with MAKE) before the procedure
-    //   attempts to read their value.
-    LOCAL: function(tokens)
-    {
-      logo.get_words(tokens).forEach(function(w) {
-          logo.scope.things[w] = null;
         });
     },
 

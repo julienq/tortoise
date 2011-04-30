@@ -31,8 +31,12 @@ COPYDEF "BF "BUTFIRST
 COPYDEF "BL "BUTLAST
 COPYDEF "EMPTY? "EMPTYP
 COPYDEF "EQUAL? "EQUALP
+COPYDEF "GREATER? "GREATERP
+COPYDEF "GREATEREQUAL? "GREATEREQUALP
 COPYDEF "IFF "IFFALSE
 COPYDEF "IFT "IFTRUE
+COPYDEF "LESS? "LESSP
+COPYDEF "LESSEQUAL? "LESSEQUALP
 COPYDEF "LIST? "LISTP
 COPYDEF "NOTEQUAL? "NOTEQUALP
 COPYDEF "OP "OUTPUT
@@ -44,5 +48,5 @@ COPYDEF "WORD? "WORDP
 
 
 ; The welcome message shows up when the library is loaded
-PR [Tortoise Logo v0.0.5 (https://github.com/julienq/tortoise)]
+PR [Tortoise Logo v0.0.6 (https://github.com/julienq/tortoise)]
 PR [Welcome to Logo]
