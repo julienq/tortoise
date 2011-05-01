@@ -27,7 +27,7 @@
 
 
 // Bugs
-// (print word "a "b "c) -> word thinks it's in parens, but print is
+// and is broken again :(
 
 // Simple format function for messages. Use {0}, {1}... as slots for
 // parameters. Missing parameters are replaced with the empty string.
@@ -172,8 +172,10 @@ String.prototype.fmt = function()
     if (typeof p === "function") {
       var q = logo.scope.current_procedure;
       logo.scope.current_procedure = this;
+      logo.scope.in_parens = !!this.in_parens;
       p(tokens, function(error, value) {
           logo.scope.current_procedure = q;
+          logo.scope.in_parens = q && !!q.in_parens;
           f(error, value);
         });
     } else {
@@ -286,10 +288,7 @@ String.prototype.fmt = function()
   {
     var tokens_ = this.value.slice(0);
     if (tokens_.length > 0) {
-      var parens = !!logo.scope.in_parens;
-      logo.scope.in_parens = true;
       logo.eval(tokens_, function(error, value) {
-          logo.scope.in_parens = parens;
           if (error || tokens_.length === 0) {
             f(error, value);
           } else {
@@ -566,6 +565,7 @@ String.prototype.fmt = function()
         current_list.value.push(token);
       } else if (current_group) {
         current_group.value.push(token);
+        if (current_group.value.length === 1) token.in_parens = true;
       } else {
         tokens.push(token);
       }
