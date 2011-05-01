@@ -28,7 +28,6 @@
 
 // Bugs
 // (print word "a "b "c) -> word thinks it's in parens, but print is
-// ignore readlist -> some garbage leftover
 
 // Simple format function for messages. Use {0}, {1}... as slots for
 // parameters. Missing parameters are replaced with the empty string.

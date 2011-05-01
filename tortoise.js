@@ -88,10 +88,10 @@ logo.read = function(f)
 {
   RLI.removeListener("line", eval_line);
   RLI.once("line", function(line) {
-      f(line);
       RLI.on("line", eval_line);
+      f(line);
     })
-  RLI.setPrompt(PROMPT["logo"]);
+  RLI.setPrompt(PROMPT.logo);
   RLI.prompt();
 };
 
