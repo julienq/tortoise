@@ -76,6 +76,8 @@ function eval_line(line)
 // Quit the REPL
 logo.procedures.BYE = function() { process.exit(); };
 
+logo.print = function(str) { process.stdout.write(str + "\n"); };
+
 logo.warn = function(warning)
 {
   process.stderr.write("Warning #{0}: {1}\n".fmt(warning.error_code,
