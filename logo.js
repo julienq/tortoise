@@ -84,10 +84,14 @@ String.prototype.fmt = function()
           value: function() { return logo.word(this.toString()
               .substr(0, this.toString().length - 1));
             } },
+      contains: { enumerable: true, configurable: true,
+          value: function(thing) { return thing.is_word && thing.count() === 1
+            && this.toString().indexOf(thing) >= 0;  } },
       count: { enumerable: true, configurable: true,
           value: function() { return this.toString().length; } },
       equalp: { enumerable: true, configurable: true,
-          value: function(t) { return this.is_word && value === t.value; } },
+          value: function(t) { return this.is_word &&
+            this.value === t.value; } },
       is_word: { enumerable: true, configurable: true, value: true },
       item: { enumerable: true, configurable: true,
         value: function(i) {
@@ -186,6 +190,13 @@ String.prototype.fmt = function()
 
   // The list token has an array of tokens for values
   logo.$list = Object.create(logo.$word, {
+      contains: { enumerable: true, configurable: true,
+          value: function(thing) {
+              for (var i = 0, n = this.value.length; i < n; ++i) {
+                if (this.value[i].equalp(thing)) return true;
+              }
+              return false;
+            } },
       count: { enumerable: true, configurable: true,
           value: function() { return this.value.length; } },
       is_list: { enumerable: true, configurable: true, value: true },
@@ -695,6 +706,26 @@ String.prototype.fmt = function()
     $eval_like(tokens, function(t) { return t.is_number; }, g, f);
   }
 
+  // Check the value of the current token, expecting a boolean; if it is a
+  // list, evaluate the list then check the value, expecting a boolean. Call
+  // the continuation on the success or error (not a boolean value.)
+  function $check_tf(tf, f)
+  {
+    if (tf.is_true || tf.is_false) {
+      f(undefined, tf);
+    } else if (tf.is_list) {
+      tf.eval_tokens(function(error, value) {
+          if (error) {
+            f(error);
+          } else {
+            $check_tf(value, f);
+          }
+        });
+    } else {
+      f(logo.error(logo.ERR_DOESNT_LIKE, $show(tf)));
+    }
+  };
+
   function $eval_word(tokens, g, f)
   {
     $eval_like(tokens, function(t) { return t.is_word; }, g, f);
@@ -797,20 +828,19 @@ String.prototype.fmt = function()
   // CURSOR, SETMARGINS, SETTEXTCOLOR, INCREASEFONT, DECREASEFONT, SETTEXTSIZE,
   // TEXTSIZE, SETFONT, FONT, MODULO, INT, ROUND, SQRT, POWER, EXP, LOG10, LN,
   // SIN, RADSIN, COS, RADCOS, ARCTAN, RADARCTAN, ISEQ, RSEQ, RANDOM, RERANDOM,
-  // FORM, BITAND, BITOR, BITXOR, BITNOT, ASHIFT, LSHIFT, AND, OR, NOT, TO,
-  // DEFINE, TEXT, FULLTEXT, PROP, GPROP, REMPROP, PLIST, PROCEDURE?,
-  // PRIMITIVE?, DEFINED?, NAME?, PLIST?, CONTENTS, BURIED, TRACED, STEPPED,
-  // PROCEDURES, NAMES, PLISTS, NAMELIST, PLLIST, ARITY, NODES, POALL, POPS,
-  // PONS, POPLS, PON, POPL, POT, POTS, ERASE, ERALL, ERPS, ERNS, ERPLS, ERN,
-  // ERPL, BURY, BURYALL, BURYNAME, UNBURY, UNBURYALL, UNBURYNAME, BURIED?,
-  // TRACE, UNTRACE, TRACED?, STEP, UNSTEP, STEPPED?, EDIT, EDITFILE, EDALL,
-  // EDPS, EDNS, EDPLS, EDN, EDPL, SAVE, SAVEL, LOAD, CSLSLOAD, HELP,
-  // SETEDITOR, SETLIBLOC, SETHELPLOC, SETCSLSLOC, SETTEMPLOC, GC,
-  // .SETSEGMENTSIZE, RUN, RUNRESULT, REPEAT, FOREVER, REPCOUNT, CATCH, THROW,
-  // ERROR, PAUSE, CONTINUE, WAIT, .MAYBEOUTPUT, GOTO, TAG, `, FOR, DO.WHILE,
-  // WHILE, DO.UNTIL, UNTIL, CASE, COND, APPLY, INVOKE, FOREACH, MAP, MAP.SE,
-  // FILTER, FIND, REDUCE, CROSSMAP, CASCADE, CASCADE.2, TRANSFER, .MACRO,
-  // MACRO?, MACROEXPAND
+  // FORM, BITAND, BITOR, BITXOR, BITNOT, ASHIFT, LSHIFT, TO, DEFINE, TEXT,
+  // FULLTEXT, PROP, GPROP, REMPROP, PLIST, PROCEDURE?, PRIMITIVE?, DEFINED?,
+  // NAME?, PLIST?, CONTENTS, BURIED, TRACED, STEPPED, PROCEDURES, NAMES,
+  // PLISTS, NAMELIST, PLLIST, ARITY, NODES, POALL, POPS, PONS, POPLS, PON,
+  // POPL, POT, POTS, ERASE, ERALL, ERPS, ERNS, ERPLS, ERN, ERPL, BURY,
+  // BURYALL, BURYNAME, UNBURY, UNBURYALL, UNBURYNAME, BURIED?, TRACE, UNTRACE,
+  // TRACED?, STEP, UNSTEP, STEPPED?, EDIT, EDITFILE, EDALL, EDPS, EDNS, EDPLS,
+  // EDN, EDPL, SAVE, SAVEL, LOAD, CSLSLOAD, HELP, SETEDITOR, SETLIBLOC,
+  // SETHELPLOC, SETCSLSLOC, SETTEMPLOC, GC, .SETSEGMENTSIZE, RUN, RUNRESULT,
+  // REPEAT, FOREVER, REPCOUNT, CATCH, THROW, ERROR, PAUSE, CONTINUE, WAIT,
+  // .MAYBEOUTPUT, GOTO, TAG, `, FOR, DO.WHILE, WHILE, DO.UNTIL, UNTIL, CASE,
+  // COND, APPLY, INVOKE, FOREACH, MAP, MAP.SE, FILTER, FIND, REDUCE, CROSSMAP,
+  // CASCADE, CASCADE.2, TRANSFER, .MACRO, MACRO?, MACROEXPAND
   logo.procedures = {
 
     // AND tf1 tf2
@@ -825,55 +855,23 @@ String.prototype.fmt = function()
     //   examined.  Example:
     //     MAKE "RESULT AND [NOT (:X = 0)] [(1 / :X) > .5]
     //   to avoid the division by zero if the first part is false.
-    // TODO refactor; extract get_slurp
     AND: function(tokens, f)
     {
-      var predicates = [];
-      function eval_predicates()
-      {
-        function check(tf)
-        {
-          if (tf.is_false) {
-            f(undefined, tf);
-          } else if (tf.is_true) {
-            eval_predicates();
+      var do_eval = true;
+      $eval_slurp(tokens, function(tf, value, g) {
+          if (do_eval) {
+            $check_tf(tf, function(error, tf_) {
+              if (error) {
+                g(error);
+              } else {
+                if (tf_.is_false) do_eval = false;
+                g(undefined, tf_);
+              }
+            });
           } else {
-            f(logo.error(logo.ERR_DOESNT_LIKE, $show(tf)));
+            g(undefined, value);
           }
-        }
-        if (predicates.length === 0) {
-          f(undefined, logo.word(true));
-        } else {
-          var p = predicates.shift();
-          if (p.is_list) {
-            p.eval_tokens(function(error, value) {
-                if (error) {
-                  f(error);
-                } else {
-                  check(value);
-                }
-              });
-          } else {
-            check(p);
-          }
-        }
-      }
-      (function slurp(n) {
-        if ((logo.scope.in_parens && tokens.length === 0) ||
-          (!logo.scope.in_parens && n === 0)) {
-          eval_predicates();
-        } else {
-          $get_token(tokens, function(p) {
-              predicates.push(p);
-              slurp(n - 1);
-            }, f);
-        }
-      });
-      if (logo.scope.in_parens && tokens.length === 0) {
-        f(undefined, logo.token());
-      } else {
-        eval_predicates(2);
-      }
+        }, f, 2, logo.token());
     },
 
     // BUTFIRST wordorlist
@@ -1085,7 +1083,7 @@ String.prototype.fmt = function()
     //   instructionlist contains an expression that outputs a value.
     IFELSE: function(tokens, f)
     {
-      $eval_bool(tokens, function(tf) {
+      $eval_boolean(tokens, function(tf) {
           $eval_list(tokens, function(list_then) {
               $eval_list(tokens, function(list_else) {
                   if (tf.is_true) {
@@ -1266,6 +1264,21 @@ String.prototype.fmt = function()
         }, f);
     },
 
+    // MEMBERP thing1 thing2
+    // MEMBER? thing1 thing2
+    //   if "thing2" is a list or an array, outputs TRUE if "thing1" is EQUALP
+    //   to a member of "thing2", FALSE otherwise.  If "thing2" is
+    //   a word, outputs TRUE if "thing1" is a one-character word EQUALP to a
+    //   character of "thing2", FALSE otherwise.
+    MEMBERP: function(tokens, f)
+    {
+      $eval(tokens, function(thing1) {
+          $eval(tokens, function(thing2) {
+              f(undefined, logo.word(thing2.contains(thing1)));
+            }, f);
+        }, f);
+    },
+
     // MINUS num
     // TODO - num
     //   outputs the negative of its input.  Minus sign means unary minus if
@@ -1293,6 +1306,37 @@ String.prototype.fmt = function()
               f(undefined, logo.word(!thing1.equalp(thing2)));
             }, f);
         }, f);
+    },
+
+    // OR tf1 tf2
+    // (OR tf1 tf2 tf3 ...)
+	  //   outputs TRUE if any input is TRUE, otherwise FALSE.  All inputs
+    //   must be TRUE or FALSE.  (Comparison is case-insensitive regardless
+    //   of the value of CASEIGNOREDP.  That is, "true" or "True" or "TRUE"
+    //   are all the same.)  An input can be a list, in which case it is
+    //   taken as an expression to run; that expression must produce a TRUE
+    //   or FALSE value.  List expressions are evaluated from left to right;
+    //   as soon as a TRUE value is found, the remaining inputs are not
+    //   examined.  Example:
+    //     IF OR :X=0 [some.long.computation] [...]
+    //   to avoid the long computation if the first condition is met.
+    OR: function(tokens, f)
+    {
+      var do_eval = true;
+      $eval_slurp(tokens, function(tf, value, g) {
+          if (do_eval) {
+            $check_tf(tf, function(error, tf_) {
+              if (error) {
+                g(error);
+              } else {
+                if (tf_.is_true) do_eval = false;
+                g(undefined, tf_);
+              }
+            });
+          } else {
+            g(undefined, value);
+          }
+        }, f, 2, logo.token());
     },
 
     // OUTPUT value
@@ -1345,7 +1389,7 @@ String.prototype.fmt = function()
     PRODUCT: function(tokens, f)
     {
       $eval_slurp(tokens, function(n, product, g) {
-          if (!n.is_number()) {
+          if (!n.is_number) {
             g(logo.error(logo.ERR_DOESNT_LIKE, $show(n)));
           } else {
             g(undefined, logo.word(n.value * product.value));

@@ -25,6 +25,15 @@ TO NAME :value :varname
   MAKE :varname :value
 END
 
+; REVERSE list
+;   outputs a list whose members are the members of the input list, in
+;   reverse order.
+TO REVERSE :list
+  IFELSE EMPTYP :list
+    [OUTPUT :list]
+    [FPUT LAST :list REVERSE BUTLAST :list]
+END
+
 
 ; Aliases
 COPYDEF "BF "BUTFIRST
@@ -38,6 +47,7 @@ COPYDEF "IFT "IFTRUE
 COPYDEF "LESS? "LESSP
 COPYDEF "LESSEQUAL? "LESSEQUALP
 COPYDEF "LIST? "LISTP
+COPYDEF "MEMBER? "MEMBERP
 COPYDEF "NOTEQUAL? "NOTEQUALP
 COPYDEF "OP "OUTPUT
 COPYDEF "PO "PRINTOUT
@@ -48,5 +58,5 @@ COPYDEF "WORD? "WORDP
 
 
 ; The welcome message shows up when the library is loaded
-PR [Tortoise Logo v0.0.8 (https://github.com/julienq/tortoise)]
+PR [Tortoise Logo v0.0.9 (https://github.com/julienq/tortoise)]
 PR [Welcome to Logo]
