@@ -27,7 +27,7 @@
 
 
 // Bugs
-// and is broken again :(
+// run (instead of eval_tokens) still has issue with the scope?
 
 // Simple format function for messages. Use {0}, {1}... as slots for
 // parameters. Missing parameters are replaced with the empty string.
@@ -54,7 +54,7 @@ String.prototype.fmt = function()
     butlast: function() { return this; },
     count: function() { return this; },
     equalp: function(t) { return false; },
-    eval_tokens: function(f) {
+    run: function(f) {
         f(logo.error(logo.ERR_DOESNT_LIKE, this.show())); },
     fput: function() { return this; },
     is_procedure: function() { return false; },
@@ -92,6 +92,7 @@ String.prototype.fmt = function()
       equalp: { enumerable: true, configurable: true,
           value: function(t) { return this.is_word &&
             this.value === t.value; } },
+      is_defined: { enumerable: true, configurable: true, value: true },
       is_word: { enumerable: true, configurable: true, value: true },
       item: { enumerable: true, configurable: true,
         value: function(i) {
@@ -210,16 +211,20 @@ String.prototype.fmt = function()
 
   // Evaluate the list as a list of tokens
   // TODO check the current_procedure when evaluating the list
-  logo.$list.eval_tokens = function(f)
+  logo.$list.run = function(f)
   {
     try {
-      var list = this.value.map(function(x) { return x.show(); }).join(" ");
+      var list = this.value.map($show).join(" ");
       var tokens = logo.tokenize(list);
+      var scope = logo.scope;
+      logo.scope = { things: Object.create(scope.things),
+        exit: function(value) { logo.scope = scope; f(undefined, value); } };
       (function loop(val) {
         if (tokens.length === 0) {
+          logo.scope = scope;
           f(undefined, val);
         } else {
-          $eval(tokens, loop);
+          $eval(tokens, loop, f);
         }
       })();
     } catch(e) {
@@ -714,7 +719,7 @@ String.prototype.fmt = function()
     if (tf.is_true || tf.is_false) {
       f(undefined, tf);
     } else if (tf.is_list) {
-      tf.eval_tokens(function(error, value) {
+      tf.run(function(error, value) {
           if (error) {
             f(error);
           } else {
@@ -808,7 +813,7 @@ String.prototype.fmt = function()
           if (logo.scope.test !== p) {
             f(undefined, logo.token());
           } else {
-            list.eval_tokens(f);
+            list.run(f);
           }
         }, f);
     }
@@ -836,11 +841,11 @@ String.prototype.fmt = function()
   // BURYALL, BURYNAME, UNBURY, UNBURYALL, UNBURYNAME, BURIED?, TRACE, UNTRACE,
   // TRACED?, STEP, UNSTEP, STEPPED?, EDIT, EDITFILE, EDALL, EDPS, EDNS, EDPLS,
   // EDN, EDPL, SAVE, SAVEL, LOAD, CSLSLOAD, HELP, SETEDITOR, SETLIBLOC,
-  // SETHELPLOC, SETCSLSLOC, SETTEMPLOC, GC, .SETSEGMENTSIZE, RUN, RUNRESULT,
-  // REPEAT, FOREVER, REPCOUNT, CATCH, THROW, ERROR, PAUSE, CONTINUE, WAIT,
-  // .MAYBEOUTPUT, GOTO, TAG, `, FOR, DO.WHILE, WHILE, DO.UNTIL, UNTIL, CASE,
-  // COND, APPLY, INVOKE, FOREACH, MAP, MAP.SE, FILTER, FIND, REDUCE, CROSSMAP,
-  // CASCADE, CASCADE.2, TRANSFER, .MACRO, MACRO?, MACROEXPAND
+  // SETHELPLOC, SETCSLSLOC, SETTEMPLOC, GC, .SETSEGMENTSIZE, FOREVER,
+  // REPCOUNT, CATCH, THROW, ERROR, PAUSE, CONTINUE, WAIT, .MAYBEOUTPUT, GOTO,
+  // TAG, `, FOR, DO.WHILE, WHILE, DO.UNTIL, UNTIL, CASE, COND, APPLY, INVOKE,
+  // FOREACH, MAP, MAP.SE, FILTER, FIND, REDUCE, CROSSMAP, CASCADE, CASCADE.2,
+  // TRANSFER, .MACRO, MACRO?, MACROEXPAND
   logo.procedures = {
 
     // AND tf1 tf2
@@ -1062,13 +1067,13 @@ String.prototype.fmt = function()
                 }
                 $eval_list(tokens, function(list_else) {
                     if (tf.is_true) {
-                      list_then.eval_tokens(f);
+                      list_then.run(f);
                     } else {
-                      list_else.eval_tokens(f);
+                      list_else.run(f);
                     }
                   }, f);
               } else if (tf.is_true) {
-                list_then.eval_tokens(f);
+                list_then.run(f);
               } else {
                 f(undefined, logo.token());
               }
@@ -1087,9 +1092,9 @@ String.prototype.fmt = function()
           $eval_list(tokens, function(list_then) {
               $eval_list(tokens, function(list_else) {
                   if (tf.is_true) {
-                    list_then.eval_tokens(f);
+                    list_then.run(f);
                   } else {
-                    list_else.eval_tokens(f);
+                    list_else.run(f);
                   }
                 }, f);
             }, f);
@@ -1489,6 +1494,56 @@ String.prototype.fmt = function()
           $eval_integer(tokens, function(num2) {
               f(undefined, logo.word(sign * Math.abs(num1 % num2)));
             }, f);
+        }, f);
+    },
+
+    // REPEAT num instructionlist
+	  //   command.  Runs the "instructionlist" repeatedly, "num" times.
+    REPEAT: function(tokens, f)
+    {
+      $eval_integer(tokens, function(num) {
+          $eval_list(tokens, function(list) {
+              (function repeat() {
+                if (num <= 0) {
+                  f();
+                } else {
+                  --num;
+                  list.run(repeat);
+                }
+              })();
+            }, f);
+        }, f);
+    },
+
+    // RUN instructionlist
+	  //   command or operation.  Runs the Logo instructions in the input
+    //   list; outputs if the list contains an expression that outputs.
+    RUN: function(tokens, f)
+    {
+      $eval_list(tokens, function(list) { list.run(f); }, f);
+    },
+
+    // RUNRESULT instructionlist
+	  //   runs the instructions in the input; outputs an empty list if
+    //   those instructions produce no output, or a list whose only
+    //   member is the output from running the input instructionlist.
+    //   Useful for inventing command-or-operation control structures:
+    //     local "result
+    //     make "result runresult [something]
+    //     if emptyp :result [stop]
+    //     output first :result
+    RUNRESULT: function(tokens, f)
+    {
+      $eval_list(tokens, function(list) {
+          list.run(function(error, value) {
+              if (error) {
+                f(error);
+              } else {
+                var out = logo.list();
+                if (value.is_defined) out.value.push(value);
+                f(undefined, out);
+              }
+            });
         }, f);
     },
 
