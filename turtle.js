@@ -148,7 +148,10 @@ var turtle = this.turtle = svg_turtle(document.getElementById("svg_turtle"),
 //   turtle does not change.)
 logo.procedures.BACK = function(tokens, f)
 {
-  $eval_number(tokens, function(dist) { turtle.forward(-dist); }, f);
+  logo.eval_number(tokens, function(dist) {
+      turtle.forward(-dist.value);
+      f();
+    }, f);
 };
 
 // CLEAN
@@ -174,7 +177,10 @@ logo.procedures.CLEARSCREEN = logo.procedures.CS = function(tokens)
 //   the specified distance (measured in turtle steps).
 logo.procedures.FORWARD = function(tokens, f)
 {
-  $eval_number(tokens, function(dist) { turtle.forward(dist); }, f);
+  logo.eval_number(tokens, function(dist) {
+      turtle.forward(dist.value);
+      f();
+    }, f);
 };
 
 // HIDETURTLE
@@ -195,7 +201,10 @@ logo.procedures.HOME = function(tokens, f) { turtle.home(); f(); };
 //   in degrees (1/360 of a circle).
 logo.procedures.LEFT = function(tokens, f)
 {
-  $eval_number(tokens, function(degrees) { turtle.turn(-degrees); f(); }, f);
+  logo.eval_number(tokens, function(degrees) {
+      turtle.turn(-degrees.value);
+      f();
+    }, f);
 };
 
 // PENDOWN
@@ -225,76 +234,13 @@ logo.procedures.POS = function(tokens, f)
 //   degrees (1/360 of a circle).
 logo.procedures.RIGHT = function(tokens, f)
 {
-  $eval_number(tokens, function(degrees) { turtle.turn(degrees); f(); }, f);
+  logo.eval_number(tokens, function(degrees) {
+      turtle.turn(degrees.value);
+      f();
+    }, f);
 };
 
 // SHOWTURTLE
 // ST
 //   makes the turtle visible.
 logo.procedures.SHOWTURTLE = function(tokens, f) { turtle.shown = true; f(); };
-
-
-/*
-// Shorthands for Javascript access as well (e.g. from the console)
-back = bk = function(d) { logo.turtle.forward(-d); };
-clean = turtle.clean.bind(logo.turtle);
-clearscreen = cs = function() { logo.turtle.home(); logo.turtle.clean(); };
-forward = fd = logo.turtle.forward.bind(logo.turtle);
-hideturtle = ht = function() { logo.turtle.shown = false; };
-home = logo.turtle.home.bind(logo.turtle);
-left = lt = function(incr) { logo.turtle.turn(-incr); };
-pendown = pd = function() { logo.turtle.drawing = true; };
-penup = pu = function() { logo.turtle.drawing = false; };
-pos = function() { return [logo.turtle._x, -logo.turtle._y]; };
-right = rt = logo.turtle.turn.bind(logo.turtle);
-showturtle = st = function() { logo.turtle.shown = true; };
-
-
-function tree(size)
-{
-  if (size < 5) {
-    forward(size);
-    back(size);
-  } else {
-    forward(size / 3);
-    left(30);
-    tree(size * 2 / 3);
-    right(30);
-    forward(size / 6);
-    right(25);
-    tree(size / 2);
-    left(25);
-    forward(size / 3);
-    right(25);
-    tree(size / 2);
-    left(25);
-    forward(size /6);
-    back(size);
-  }
-}
-
-function flake(i, size)
-{
-  waff.times(3, function() {
-      right(120);
-      flake_line(i, size);
-    });
-}
-
-function flake_line(i, size)
-{
-  if (i === 0) {
-    fd(size);
-  } else {
-    var sz = size / 3;
-    flake_line(i - 1, sz);
-    left(60);
-    flake_line(i - 1, sz);
-    right(120);
-    flake_line(i - 1, sz);
-    left(60);
-    flake_line(i - 1, sz);
-  }
-}
-
-*/

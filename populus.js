@@ -224,7 +224,7 @@ if (typeof Function.prototype.bind !== "function") {
 })(typeof exports === "undefined" ? this.populus = {} : exports);
 
 
-if (typeof Element === "object") {
+if (typeof Element !== "undefined") {
   // Additions to DOM Elements
   // The class stuff needs to be updated for SVGElements!
 

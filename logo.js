@@ -213,7 +213,7 @@
           logo.scope = scope;
           f(undefined, val);
         } else {
-          $eval(tokens, loop, f);
+          logo.eval_token(tokens, loop, f);
         }
       })();
     } catch(e) {
@@ -649,57 +649,6 @@
   };
 
 
-  // Helper function for a one-argument procedure. The function g must call the
-  // continuation f itself.
-  function $eval(tokens, g, f)
-  {
-    logo.eval(tokens, function(error, value) {
-        if (error) {
-          f(error);
-        } else {
-          g(value);
-        }
-      });
-  }
-
-  // Same as above, except that before invoking g with the value received from
-  // eval, the predicate p is applied to the value to check that this value is
-  // what g expects (for instance, test for a word, a list, etc.)
-  function $eval_like(tokens, p, g, f)
-  {
-    logo.eval(tokens, function(error, value) {
-        if (error) {
-          f(error);
-        } else if (!p(value)) {
-          f(logo.error(logo.ERR_DOESNT_LIKE, $show(value)));
-        } else {
-          g(value);
-        }
-      });
-  }
-
-  // Eval a token, making sure that it is a list
-  function $eval_boolean(tokens, g, f)
-  {
-    $eval_like(tokens, function(t) { return t.is_true || t.is_false; },
-        g, f);
-  }
-
-  function $eval_integer(tokens, g, f)
-  {
-    $eval_like(tokens, function(t) { return t.is_integer; }, g, f);
-  }
-
-  function $eval_list(tokens, g, f)
-  {
-    $eval_like(tokens, function(t) { return t.is_list; }, g, f);
-  }
-
-  function $eval_number(tokens, g, f)
-  {
-    $eval_like(tokens, function(t) { return t.is_number; }, g, f);
-  }
-
   // Check the value of the current token, expecting a boolean; if it is a
   // list, evaluate the list then check the value, expecting a boolean. Call
   // the continuation on the success or error (not a boolean value.)
@@ -720,16 +669,67 @@
     }
   };
 
-  function $eval_word(tokens, g, f)
+  // Helper function for a one-argument procedure. The function g must call the
+  // continuation f itself.
+  logo.eval_token = function(tokens, g, f)
   {
-    $eval_like(tokens, function(t) { return t.is_word; }, g, f);
+    logo.eval(tokens, function(error, value) {
+        if (error) {
+          f(error);
+        } else {
+          g(value);
+        }
+      });
+  }
+
+  // Same as above, except that before invoking g with the value received from
+  // eval, the predicate p is applied to the value to check that this value is
+  // what g expects (for instance, test for a word, a list, etc.)
+  logo.eval_like = function(tokens, p, g, f)
+  {
+    logo.eval(tokens, function(error, value) {
+        if (error) {
+          f(error);
+        } else if (!p(value)) {
+          f(logo.error(logo.ERR_DOESNT_LIKE, $show(value)));
+        } else {
+          g(value);
+        }
+      });
+  }
+
+  // Eval a token, making sure that it is a list
+  logo.eval_boolean = function(tokens, g, f)
+  {
+    logo.eval_like(tokens, function(t) { return t.is_true || t.is_false; },
+        g, f);
+  }
+
+  logo.eval_integer = function(tokens, g, f)
+  {
+    logo.eval_like(tokens, function(t) { return t.is_integer; }, g, f);
+  }
+
+  logo.eval_list = function(tokens, g, f)
+  {
+    logo.eval_like(tokens, function(t) { return t.is_list; }, g, f);
+  }
+
+  logo.eval_number = function(tokens, g, f)
+  {
+    logo.eval_like(tokens, function(t) { return t.is_number; }, g, f);
+  }
+
+  logo.eval_word = function(tokens, g, f)
+  {
+    logo.eval_like(tokens, function(t) { return t.is_word; }, g, f);
   }
 
   // Wrapper around eval to slurp arguments within parens, or an expected
   // number of arguments. The function g gets called for each value with the
   // current accumulated value, initialized by init, and a continuation that it
   // must call on error or success with the new accumulated value.
-  function $eval_slurp(tokens, g, f, n, init)
+  logo.eval_slurp = function(tokens, g, f, n, init)
   {
     (function slurp(m, acc) {
       if ((logo.scope.in_parens && tokens.length === 0) ||
@@ -753,39 +753,6 @@
     })(n, init);
   }
 
-  // Get a token which is not evaled
-  function $get_token(tokens, g, f)
-  {
-    if (tokens.length === 0) {
-      f(logo.error(logo.ERR_NOT_ENOUGH_INPUT));
-    } else {
-      var token = tokens.shift();
-      g(token);
-    }
-  }
-
-  // Get a token which is not evaled, but must still conform to some predicate
-  // (e.g. $get_list below to get a list token for IF.)
-  function $get_like(tokens, p, g, f)
-  {
-    if (tokens.length === 0) {
-      f(logo.error(logo.ERR_NOT_ENOUGH_INPUT));
-    } else {
-      var token = tokens.shift();
-      if (!p(token)) {
-        f(logo.error(logo.ERR_DOESNT_LIKE, $show(token)));
-      } else {
-        g(token);
-      }
-    }
-  }
-
-  // Get a litteral list token
-  function $get_list(tokens, g, f)
-  {
-    $get_like(tokens, function(t) { return t.is_list; }, g, f);
-  }
-
   // Wrapper for show to handle undefined values
   function $show(token)
   {
@@ -798,7 +765,7 @@
     if (typeof logo.scope.test !== "boolean") {
       f(logo.error(logo.ERR_NO_TEST));
     } else {
-      $eval(tokens, function(list) {
+      logo.eval_token(tokens, function(list) {
           if (logo.scope.test !== p) {
             f(undefined, logo.token());
           } else {
@@ -852,7 +819,7 @@
     AND: function(tokens, f)
     {
       var do_eval = true;
-      $eval_slurp(tokens, function(tf, value, g) {
+      logo.eval_slurp(tokens, function(tf, value, g) {
           if (do_eval) {
             $check_tf(tf, function(error, tf_) {
               if (error) {
@@ -875,7 +842,7 @@
     //   containing all but the first member of the input.
     BUTFIRST: function(tokens, f)
     {
-      $eval(tokens, function(v) { f(undefined, v.butfirst()); }, f);
+      logo.eval_token(tokens, function(v) { f(undefined, v.butfirst()); }, f);
     },
 
     // BUTLAST wordorlist
@@ -885,7 +852,7 @@
     //   containing all but the last member of the input.
     BUTLAST: function(tokens, f)
     {
-      $eval(tokens, function(v) { f(undefined, v.butlast()); }, f);
+      logo.eval_token(tokens, function(v) { f(undefined, v.butlast()); }, f);
     },
 
     // COPYDEF newname oldname
@@ -898,12 +865,12 @@
     //   This dialect uses "MAKE order," not "NAME order."
     COPYDEF: function(tokens, f)
     {
-      $eval_word(tokens, function(newname) {
+      logo.eval_word(tokens, function(newname) {
           var n = newname.value.toUpperCase();
           if (n in logo.procedures && !n._source) {
             f(logo.error(logo.ERR_ALREADY_DEFINED, $show(newname)));
           } else {
-            $eval_word(tokens, function(oldname) {
+            logo.eval_word(tokens, function(oldname) {
                 var o = oldname.value.toUpperCase();
                 var p = logo.procedures[o];
                 if (!p) {
@@ -925,7 +892,7 @@
     //   TODO arrays
     COUNT: function(tokens, f)
     {
-      $eval(tokens, function(v) { f(undefined, logo.word(v.count())); },
+      logo.eval_token(tokens, function(v) { f(undefined, logo.word(v.count())); },
         f);
     },
 
@@ -937,8 +904,8 @@
     //   by a nonspace.  (See also MINUS.)
     DIFFERENCE: function(tokens, f)
     {
-      $eval_number(tokens, function(num1) {
-          $eval_number(tokens, function(num2) {
+      logo.eval_number(tokens, function(num1) {
+          logo.eval_number(tokens, function(num2) {
               f(undefined, logo.word(num1.value - num2.value));
             }, f);
         }, f);
@@ -950,7 +917,7 @@
     //   FALSE otherwise.
     EMPTYP: function(tokens, f)
     {
-      $eval(tokens, function(thing) {
+      logo.eval_token(tokens, function(thing) {
           f(undefined, logo.word(thing.count() === 0))
         }, f);
     },
@@ -972,8 +939,8 @@
     //   performing SETITEM on one of them will also change the other.)
     EQUALP: function(tokens, f)
     {
-      $eval(tokens, function(thing1) {
-          $eval(tokens, function(thing2) {
+      logo.eval_token(tokens, function(thing1) {
+          logo.eval_token(tokens, function(thing2) {
               f(undefined, logo.word(thing1.equalp(thing2)));
             }, f);
         }, f);
@@ -987,7 +954,9 @@
     //   TODO arrays
     FIRST: function(tokens, f)
     {
-      $eval(tokens, function(thing) { f(undefined, thing.item(1)); }, f);
+      logo.eval_token(tokens, function(thing) {
+          f(undefined, thing.item(1));
+        }, f);
     },
 
     // FPUT thing list
@@ -997,8 +966,8 @@
     //   equivalent to WORD.
     FPUT: function(tokens, f)
     {
-      $eval(tokens, function(thing) {
-          $eval(tokens, function(list) {
+      logo.eval_token(tokens, function(thing) {
+          logo.eval_token(tokens, function(list) {
               f(undefined, list.fput(thing));
             }, f);
         }, f);
@@ -1010,8 +979,8 @@
     //   outputs TRUE if its first input is greater than or equal to its second.
     GREATEREQUALP: function(tokens, f)
     {
-      $eval_number(tokens, function(num1) {
-          $eval_number(tokens, function(num2) {
+      logo.eval_number(tokens, function(num1) {
+          logo.eval_number(tokens, function(num2) {
               f(undefined, logo.word(num1 >= num2));
             }, f);
         }, f);
@@ -1023,8 +992,8 @@
     //   outputs TRUE if its first input is strictly greater than its second.
     GREATERP: function(tokens, f)
     {
-      $eval_number(tokens, function(num1) {
-          $eval_number(tokens, function(num2) {
+      logo.eval_number(tokens, function(num1) {
+          logo.eval_number(tokens, function(num2) {
               f(undefined, logo.word(num1 > num2));
             }, f);
         }, f);
@@ -1047,14 +1016,14 @@
     //   session.
     IF: function(tokens, f)
     {
-      $eval_boolean(tokens, function(tf) {
-          $eval_list(tokens, function(list_then) {
+      logo.eval_boolean(tokens, function(tf) {
+          logo.eval_list(tokens, function(list_then) {
               if ((logo.scope.in_parens && tokens.length > 0 ||
                   tokens.length > 0 && tokens[0].is_list)) {
                 if (!logo.scope.in_parens) {
                   logo.warn(logo.error(logo.ERR_ASSUMING_IFELSE));
                 }
-                $eval_list(tokens, function(list_else) {
+                logo.eval_list(tokens, function(list_else) {
                     if (tf.is_true) {
                       list_then.run(f);
                     } else {
@@ -1077,9 +1046,9 @@
     //   instructionlist contains an expression that outputs a value.
     IFELSE: function(tokens, f)
     {
-      $eval_boolean(tokens, function(tf) {
-          $eval_list(tokens, function(list_then) {
-              $eval_list(tokens, function(list_else) {
+      logo.eval_boolean(tokens, function(tf) {
+          logo.eval_list(tokens, function(list_then) {
+              logo.eval_list(tokens, function(list_else) {
                   if (tf.is_true) {
                     list_then.run(f);
                   } else {
@@ -1113,8 +1082,8 @@
     //   TODO array
     ITEM: function(tokens, f)
     {
-      $eval_integer(tokens, function(index) {
-          $eval(tokens, function(thing) {
+      logo.eval_integer(tokens, function(index) {
+          logo.eval_token(tokens, function(thing) {
               f(undefined, thing.item(index));
             }, f);
         }, f);
@@ -1125,7 +1094,9 @@
     //   If the input is a list, outputs the last member of the list.
     LAST: function(tokens, f)
     {
-      $eval(tokens, function(v) { f(undefined, v.item(v.count())); }, f);
+      logo.eval_token(tokens, function(v) {
+          f(undefined, v.item(v.count()));
+        }, f);
     },
 
     // LESSEQUALP num1 num2
@@ -1134,8 +1105,8 @@
     //   outputs TRUE if its first input is less than or equal to its second.
     LESSEQUALP: function(tokens, f)
     {
-      $eval_number(tokens, function(num1) {
-          $eval_number(tokens, function(num2) {
+      logo.eval_number(tokens, function(num1) {
+          logo.eval_number(tokens, function(num2) {
               f(undefined, logo.word(num1 <= num2));
             }, f);
         }, f);
@@ -1147,8 +1118,8 @@
     //   outputs TRUE if its first input is strictly less than its second.
     LESSP: function(tokens, f)
     {
-      $eval_number(tokens, function(num1) {
-          $eval_number(tokens, function(num2) {
+      logo.eval_number(tokens, function(num1) {
+          logo.eval_number(tokens, function(num2) {
               f(undefined, logo.word(num1 < num2));
             }, f);
         }, f);
@@ -1160,7 +1131,7 @@
     //   Logo datum (word, list, or array).
     LIST: function(tokens, f)
     {
-      $eval_slurp(tokens, function(v, list, g) {
+      logo.eval_slurp(tokens, function(v, list, g) {
           list.value.push(v);
           g(undefined, list);
         }, f, 2, logo.list());
@@ -1171,7 +1142,7 @@
     //   outputs TRUE if the input is a list, FALSE otherwise.
     LISTP: function(tokens, f)
     {
-      $eval(tokens, function(thing) {
+      logo.eval_token(tokens, function(thing) {
           f(undefined, logo.word(thing.is_list));
         }, f);
     },
@@ -1194,14 +1165,14 @@
       if (logo.scope.in_parens) {
         (function slurp() {
           if (tokens.length > 0) {
-            $eval_word(tokens, function(varname) {
+            logo.eval_word(tokens, function(varname) {
                 varnames.push(varname);
                 slurp();
               }, f);
           }
         })();
       } else {
-        $eval(tokens, function(thing) {
+        logo.eval_token(tokens, function(thing) {
             if (thing.is_word) {
               varnames.push(thing);
             } else {
@@ -1231,8 +1202,8 @@
     //   equivalent to WORD with its inputs in the other order.
     LPUT: function(tokens, f)
     {
-      $eval(tokens, function(thing) {
-          $eval(tokens, function(list) {
+      logo.eval_token(tokens, function(thing) {
+          logo.eval_token(tokens, function(list) {
               f(undefined, list.lput(thing));
             }, f);
         }, f);
@@ -1245,9 +1216,9 @@
     //   variable is changed.  If not, a new global variable is created.
     MAKE: function(tokens, f)
     {
-      $eval_word(tokens, function(varname) {
+      logo.eval_word(tokens, function(varname) {
           var name = varname.value;
-          $eval(tokens, function(value) {
+          logo.eval_token(tokens, function(value) {
               if (logo.scope.things.hasOwnProperty(name)) {
                 logo.scope.things[name] = value;
               } else {
@@ -1266,8 +1237,8 @@
     //   character of "thing2", FALSE otherwise.
     MEMBERP: function(tokens, f)
     {
-      $eval(tokens, function(thing1) {
-          $eval(tokens, function(thing2) {
+      logo.eval_token(tokens, function(thing1) {
+          logo.eval_token(tokens, function(thing2) {
               f(undefined, logo.word(thing2.contains(thing1)));
             }, f);
         }, f);
@@ -1283,7 +1254,7 @@
     //     - 3 + 4		means	(-3)+4
     MINUS: function(tokens, f)
     {
-      $eval_number(tokens, function(num) {
+      logo.eval_number(tokens, function(num) {
           f(undefined, logo.word(-num));
         }, f);
     },
@@ -1295,8 +1266,8 @@
     //   for the meaning of equality for different data types.
     NOTEQUALP: function(tokens, f)
     {
-      $eval(tokens, function(thing1) {
-          $eval(tokens, function(thing2) {
+      logo.eval_token(tokens, function(thing1) {
+          logo.eval_token(tokens, function(thing2) {
               f(undefined, logo.word(!thing1.equalp(thing2)));
             }, f);
         }, f);
@@ -1317,7 +1288,7 @@
     OR: function(tokens, f)
     {
       var do_eval = true;
-      $eval_slurp(tokens, function(tf, value, g) {
+      logo.eval_slurp(tokens, function(tf, value, g) {
           if (do_eval) {
             $check_tf(tf, function(error, tf_) {
               if (error) {
@@ -1341,7 +1312,7 @@
     //   but the procedure that invokes OUTPUT is an operation.
     OUTPUT: function(tokens, f)
     {
-      $eval(tokens, function(value) { logo.scope.exit(value); }, f);
+      logo.eval_token(tokens, function(value) { logo.scope.exit(value); }, f);
     },
 
     // PRIMITIVES
@@ -1370,7 +1341,7 @@
     //   TODO streams, arrays
     PRINT: function(tokens, f)
     {
-      $eval_slurp(tokens, function(v, _, g) {
+      logo.eval_slurp(tokens, function(v, _, g) {
           logo.print(v.toString());
           g(undefined, logo.token());
         }, f, 1);
@@ -1382,7 +1353,7 @@
     //   outputs the product of its inputs.
     PRODUCT: function(tokens, f)
     {
-      $eval_slurp(tokens, function(n, product, g) {
+      logo.eval_slurp(tokens, function(n, product, g) {
           if (!n.is_number) {
             g(logo.error(logo.ERR_DOESNT_LIKE, $show(n)));
           } else {
@@ -1398,7 +1369,7 @@
     //    contents list.
     PRINTOUT: function(tokens, f)
     {
-      $eval(tokens, function(list) {
+      logo.eval_token(tokens, function(list) {
           var words = list.is_word ? [list] : list.value.slice(0);
           (function po() {
             if (words.length === 0) {
@@ -1434,12 +1405,12 @@
     QUOTIENT: function(tokens, f)
     {
       if (logo.scope.in_parens) {
-        $eval_number(tokens, function(num) {
+        logo.eval_number(tokens, function(num) {
             f(undefined, logo.word(1 / num.value));
           }, f);
       } else {
-        $eval_number(tokens, function(num1) {
-            $eval_number(tokens, function(num2) {
+        logo.eval_number(tokens, function(num1) {
+            logo.eval_number(tokens, function(num2) {
                 f(undefined, logo.word(num1 / num2));
               }, f);
           }, f);
@@ -1478,9 +1449,9 @@
     //   integers and the result is an integer with the same sign as num1.
     REMAINDER: function(tokens, f)
     {
-      $eval_integer(tokens, function(num1) {
+      logo.eval_integer(tokens, function(num1) {
           var sign = num1 < 0 ? -1 : 1;
-          $eval_integer(tokens, function(num2) {
+          logo.eval_integer(tokens, function(num2) {
               f(undefined, logo.word(sign * Math.abs(num1 % num2)));
             }, f);
         }, f);
@@ -1490,8 +1461,8 @@
 	  //   command.  Runs the "instructionlist" repeatedly, "num" times.
     REPEAT: function(tokens, f)
     {
-      $eval_integer(tokens, function(num) {
-          $eval_list(tokens, function(list) {
+      logo.eval_integer(tokens, function(num) {
+          logo.eval_list(tokens, function(list) {
               (function repeat() {
                 if (num <= 0) {
                   f();
@@ -1509,7 +1480,7 @@
     //   list; outputs if the list contains an expression that outputs.
     RUN: function(tokens, f)
     {
-      $eval_list(tokens, function(list) { list.run(f); }, f);
+      logo.eval_list(tokens, function(list) { list.run(f); }, f);
     },
 
     // RUNRESULT instructionlist
@@ -1523,7 +1494,7 @@
     //     output first :result
     RUNRESULT: function(tokens, f)
     {
-      $eval_list(tokens, function(list) {
+      logo.eval_list(tokens, function(list) {
           list.run(function(error, value) {
               if (error) {
                 f(error);
@@ -1544,7 +1515,7 @@
     //   not lists, or the members of its inputs, if those inputs are lists.
     SENTENCE: function(tokens, f)
     {
-      $eval_slurp(tokens, function(thing, sentence, g) {
+      logo.eval_slurp(tokens, function(thing, sentence, g) {
           if (thing.is_list) {
             sentence.value = sentence.value.concat(thing.value);
           } else {
@@ -1560,7 +1531,7 @@
     //   if an input is a list it is printed inside square brackets.
     SHOW: function(tokens, f)
     {
-      $eval_slurp(tokens, function(v, _, g) {
+      logo.eval_slurp(tokens, function(v, _, g) {
           logo.print(v.show());
           g(undefined, logo.token());
         }, f, 1);
@@ -1578,7 +1549,7 @@
     //   outputs the sum of its inputs.
     SUM: function(tokens, f)
     {
-      $eval_slurp(tokens, function(n, sum, g) {
+      logo.eval_slurp(tokens, function(n, sum, g) {
           if (!n.is_number) {
             g(logo.error(logo.ERR_DOESNT_LIKE, $show(n)));
           } else {
@@ -1594,7 +1565,7 @@
     //   IFFALSE must be in the same procedure or a subprocedure.
     TEST: function(tokens, f)
     {
-      $eval(tokens, function(tf) {
+      logo.eval_token(tokens, function(tf) {
           if (!(tf.is_true() || tf.is_false())) {
             f(logo.error(logo.ERR_DOESNT_LIKE, $show(tf)));
           } else {
@@ -1614,7 +1585,7 @@
     //   so that :FOO means THING "FOO.
     THING: function(tokens, f)
     {
-      $eval_word(tokens, function(varname) {
+      logo.eval_word(tokens, function(varname) {
           var val = logo.scope.things[varname.value];
           if (val) {
             f(undefined, val);
@@ -1632,7 +1603,7 @@
     //   outputs a word formed by concatenating its inputs.
     WORD: function(tokens, f)
     {
-      $eval_slurp(tokens, function(v, w, g) {
+      logo.eval_slurp(tokens, function(v, w, g) {
           if (!v.is_word) {
             g(logo.error(logo.ERR_DOESNT_LIKE, $show(v)));
           } else {
@@ -1646,7 +1617,7 @@
     //   outputs TRUE if the input is a word, FALSE otherwise.
     WORDP: function(tokens, f)
     {
-      $eval(tokens, function(thing) {
+      logo.eval_token(tokens, function(thing) {
           f(undefined, logo.word(thing.is_word));
         }, f);
     },
@@ -1657,7 +1628,7 @@
     // Show internals of values, used for debugging
     SHOWINTERNALS: function(tokens, f)
     {
-      $eval_slurp(tokens, function(v, _, g) {
+      logo.eval_slurp(tokens, function(v, _, g) {
           logo.print(v.show_internals());
           g(undefined, logo.token());
         }, f, 1);
