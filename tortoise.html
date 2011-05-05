@@ -4,40 +4,40 @@
     <title>Tortoise | A Javascript Logo interpreter with an SVG turtle</title>
     <meta charset="UTF-8">
     <style>
-      body { margin: 0; padding: 0; }
-      #cmdline { font-family: monospace; }
+      body { margin: 1em auto; padding: 0; width: 854px; }
+      .svg { background-color: #222; text-align: center; }
+      #out { font-family: monospace; max-height: 24em; overflow: auto; }
+      #cmdline { font-family: monospace; font-size: 100%; border: none;
+        background-color: #ddd; }
+      #cmdline:focus { outline: none; background-color: #ffe; color: #08f; }
       .cmd { color: #08f; }
       .warning { color: #f80; }
       .error { color: #ff4040; }
     </style>
   </head>
   <body>
-    <!--
-    <svg id="svg_main" width="512px" height="512px"
-      viewBox="-256 -256 512 512">
-      <rect id="svg_bg" x="-256" y="-256" width="512" height="512"
+    <svg id="svg_main" width="854px" height="480px"
+      viewBox="-427 -240 854 480">
+      <rect id="svg_bg" x="-427" y="-240" width="854" height="480"
         fill="black"/>
       <g id="svg_fg"/>
       <path id="svg_turtle" fill="#ff4040" d="M8,0L0,-16L-8,0Z"/>
     </svg>
-    -->
-    <pre></pre>
-    <textarea id="cmdline" class="cmd" cols=80 rows=1></textarea>
+    <div id="out"><div id="out_"></div></div>
+    <textarea id="cmdline" cols="80" rows="1" spellcheck="false"></textarea>
     <script src="populus.js"></script>
     <script src="logo.js"></script>
-    <!--
     <script src="turtle.js"></script>
-    -->
     <script>
 
-var out = document.querySelector("pre");
+var out = document.getElementById("out_");
 var cmdline = document.getElementById("cmdline");
 cmdline.addEventListener("keydown", function(e) {
     if (e.keyCode === 13) {
       e.preventDefault();
       var lines = cmdline.value;
       cmdline.value = "";
-      out.appendChild(populus.html("span", { "class": "cmd" }, lines + "\n"));
+      logo.print(lines, "cmd");
       lines.split("\n").forEach(eval_line);
     }
   }, false);
@@ -62,8 +62,8 @@ function eval_line(line)
         if (error) {
           MODE = "eval";
           if (error.error_code) {
-            out.appendChild(populus.html("span", { "class": "error" },
-              "Error #{0}: {1}\n".fmt(error.error_code, error.message)));
+            logo.print("Error #{0}: {1}".fmt(error.error_code, error.message),
+              "error");
           } else {
             throw error;
           }
@@ -86,15 +86,30 @@ function eval_script(url)
   });
 }
 
-logo.print = function(str) { out.append_text(str + "\n"); };
+logo.print = function(str, c)
+{
+  str.split("\n").forEach(function(x) {
+      if (c) {
+        out.appendChild(populus.html("span", { "class": c }, x));
+      } else {
+        out.append_text(x);
+      }
+      out.appendChild(populus.html("br"));
+    });
+  // Scroll down so that the bottom is always visible
+  out.parentNode.scrollTop = out.offsetHeight;
+};
 
 logo.warn = function(warning)
 {
-  out.appendChild(populus.html("span", { "class": "warning" },
-    "Warning #{0}: {1}\n".fmt(warning.error_code, warning.message)));
+  logo.print("Warning #{0}: {1}".fmt(warning.error_code, warning.message),
+    "warning");
 };
 
 eval_script("library.logo");
+eval_script("turtle.logo");
+
+cmdline.focus();
 
     </script>
   </body>

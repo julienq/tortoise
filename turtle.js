@@ -201,17 +201,17 @@ logo.procedures.LEFT = function(tokens, f)
 // PENDOWN
 // PD
 //   sets the pen's position to DOWN, without changing its mode.
-logo.words.PENDOWN = function(tokens, f) { turtle.drawing = true; f(); });
+logo.procedures.PENDOWN = function(tokens, f) { turtle.drawing = true; f(); };
 
 // PENUP
 // PU
 // sets the pen's position to UP, without changing its mode.
-logo.words.PENUP = function(tokens, f) { turtle.drawing = false; f(); };
+logo.procedures.PENUP = function(tokens, f) { turtle.drawing = false; f(); };
 
 // POS
 //   outputs the turtle's current position, as a list of two
 //   numbers, the X and Y coordinates.
-logo.words.POS = function(tokens, f)
+logo.procedures.POS = function(tokens, f)
 {
   var list = logo.list();
   list.value.push(logo.word(turtle._x));
@@ -223,7 +223,7 @@ logo.words.POS = function(tokens, f)
 // RT degrees
 //   turns the turtle clockwise by the specified angle, measured in
 //   degrees (1/360 of a circle).
-logo.words.RIGHT = function(tokens, f)
+logo.procedures.RIGHT = function(tokens, f)
 {
   $eval_number(tokens, function(degrees) { turtle.turn(degrees); f(); }, f);
 };
@@ -231,12 +231,13 @@ logo.words.RIGHT = function(tokens, f)
 // SHOWTURTLE
 // ST
 //   makes the turtle visible.
-logo.words.SHOWTURTLE = function(tokens, f) { turtle.shown = true; f(); };
+logo.procedures.SHOWTURTLE = function(tokens, f) { turtle.shown = true; f(); };
 
 
+/*
 // Shorthands for Javascript access as well (e.g. from the console)
 back = bk = function(d) { logo.turtle.forward(-d); };
-clean = logo.turtle.clean.bind(logo.turtle);
+clean = turtle.clean.bind(logo.turtle);
 clearscreen = cs = function() { logo.turtle.home(); logo.turtle.clean(); };
 forward = fd = logo.turtle.forward.bind(logo.turtle);
 hideturtle = ht = function() { logo.turtle.shown = false; };
@@ -295,3 +296,5 @@ function flake_line(i, size)
     flake_line(i - 1, sz);
   }
 }
+
+*/
