@@ -21,3 +21,5 @@ The command-line version can be run with Node.js; the REPL is `tortoise.js`:
   ```
 
 There are no command-line options at the moment.
+
+The HTML version works by simply opening `tortoise.html` in a browser.
