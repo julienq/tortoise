@@ -5,9 +5,14 @@
     <meta charset="UTF-8">
     <style>
       body { margin: 0; padding: 0; }
+      #cmdline { font-family: monospace; }
+      .cmd { color: #08f; }
+      .warning { color: #f80; }
+      .error { color: #ff4040; }
     </style>
   </head>
   <body>
+    <!--
     <svg id="svg_main" width="512px" height="512px"
       viewBox="-256 -256 512 512">
       <rect id="svg_bg" x="-256" y="-256" width="512" height="512"
@@ -15,7 +20,82 @@
       <g id="svg_fg"/>
       <path id="svg_turtle" fill="#ff4040" d="M8,0L0,-16L-8,0Z"/>
     </svg>
+    -->
+    <pre></pre>
+    <textarea id="cmdline" class="cmd" cols=80 rows=1></textarea>
+    <script src="populus.js"></script>
     <script src="logo.js"></script>
+    <!--
     <script src="turtle.js"></script>
+    -->
+    <script>
+
+var out = document.querySelector("pre");
+var cmdline = document.getElementById("cmdline");
+cmdline.addEventListener("keydown", function(e) {
+    if (e.keyCode === 13) {
+      e.preventDefault();
+      var lines = cmdline.value;
+      cmdline.value = "";
+      out.appendChild(populus.html("span", { "class": "cmd" }, lines + "\n"));
+      lines.split("\n").forEach(eval_line);
+    }
+  }, false);
+
+
+var MODE = "eval";
+
+// Line being read (in case of ~ it will span several calls to eval_line)
+var current_line = "";
+
+// Eval one line of input; remove comments and ~ before passing the input line
+// to be evaled (so that the tokenizer does not have to deal with comments.) In
+// case of a line ending with ~, read the next line before continuing.
+function eval_line(line)
+{
+  var m = line.match(/~$/);
+  if (m) line = line.substr(0, m.index);
+  current_line += line.replace(/(^|[^\\]);.*$/, "$1");
+  if (!m) {
+    logo[MODE === "eval" ? "eval_input" : "read_def"](current_line,
+      function(error, eval_mode) {
+        if (error) {
+          MODE = "eval";
+          if (error.error_code) {
+            out.appendChild(populus.html("span", { "class": "error" },
+              "Error #{0}: {1}\n".fmt(error.error_code, error.message)));
+          } else {
+            throw error;
+          }
+        } else {
+          MODE = eval_mode ? "eval" : "define";
+        }
+        current_line = "";
+      });
+  }
+}
+
+function eval_script(url)
+{
+  populus.xhr(url, {}, "", function(req) {
+    if (req.status === 200 || req.status === 0) {
+      req.responseText.split("\n").forEach(eval_line);
+    } else {
+      populus.log("XMLHttpRequest returned status {0}", req.status);
+    }
+  });
+}
+
+logo.print = function(str) { out.append_text(str + "\n"); };
+
+logo.warn = function(warning)
+{
+  out.appendChild(populus.html("span", { "class": "warning" },
+    "Warning #{0}: {1}\n".fmt(warning.error_code, warning.message)));
+};
+
+eval_script("library.logo");
+
+    </script>
   </body>
 </html>

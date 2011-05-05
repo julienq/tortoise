@@ -29,17 +29,6 @@
 // Bugs
 // run (instead of eval_tokens) still has issue with the scope?
 
-// Simple format function for messages. Use {0}, {1}... as slots for
-// parameters. Missing parameters are replaced with the empty string.
-// Example: "The value of {0} is {1}".fmt(name, value)
-String.prototype.fmt = function()
-{
-  var args = Array.prototype.slice.call(arguments);
-  return this.replace(/{(\d+)}/g, function(_, n) {
-      return typeof args[n] === "undefined" ? "" : args[n];
-    });
-};
-
 // Functions in the logo namespace, or exported to a logo module if used with
 // node.js
 (function(logo) {
@@ -441,9 +430,9 @@ String.prototype.fmt = function()
                   var thing = tokens.shift();
                   var word = tokens.shift();
                   if (!thing.is_procedure("THING")) {
-                    f(logo.error(ERR_DOESNT_LIKE, $show(thing)));
+                    f(logo.error(logo.ERR_DOESNT_LIKE, $show(thing)));
                   } else if (!word.is_word) {
-                    f(logo.error(ERR_DOESNT_LIKE, $show(word)));
+                    f(logo.error(logo.ERR_DOESNT_LIKE, $show(word)));
                   } else {
                     args.push(word.value);
                     read_var();

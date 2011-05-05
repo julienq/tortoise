@@ -28,6 +28,7 @@
 
 var fs = require("fs");
 var rl = require("readline");
+var populus = require("./populus");
 var logo = require("./logo");
 
 var LIB = "./library.logo";
