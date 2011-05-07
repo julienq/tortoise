@@ -484,6 +484,7 @@
             if (error) {
               f(error);
             } else if (definition.is_macro) {
+              value.run(f);
             } else {
               f(error, value);
             }
