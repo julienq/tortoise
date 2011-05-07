@@ -953,6 +953,41 @@
         }, f);
     },
 
+    // FIRSTS list
+    //   outputs a list containing the FIRST of each member of the input
+    //   list.  It is an error if any member of the input list is empty.
+    //   (The input itself may be empty, in which case the output is also
+    //   empty.)  This could be written as
+		//     to firsts :list
+    //     output map "first :list
+    //     end
+	  //   but is provided as a primitive in order to speed up the iteration
+    //   tools MAP, MAP.SE, and FOREACH.
+		//     to transpose :matrix
+    //     if emptyp first :matrix [op []]
+    //     op fput firsts :matrix transpose bfs :matrix
+    //     end
+    FIRSTS: function(tokens, f)
+    {
+      var firsts = logo.list();
+      logo.eval_list(tokens, function(list) {
+          var error;
+          for (var i = 0, n = list.value.length, error; i < n && !error; ++i) {
+            var v = list.value[i];
+            if (typeof v.count() !== "number" || v.count() === 0) {
+              error = logo.error(logo.ERR_DOESNT_LIKE, $show(v));
+            } else {
+              firsts.value.push(v.item(1));
+            }
+          }
+          if (error) {
+            f(error);
+          } else {
+            f(undefined, firsts);
+          }
+        }, f);
+    },
+
     // FPUT thing list
     //   outputs a list equal to its second input with one extra member,
     //   the first input, at the beginning.  If the second input is a word,

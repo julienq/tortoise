@@ -15,7 +15,7 @@ END
 ;   command.  Makes the named variable local, like LOCAL, and
 ;   assigns it the given value, like MAKE.
 .MACRO LOCALMAKE :name :value
-  OUTPUT (LIST "LOCAL (WORD "" :name) "MAKE (WORD "" :name) :value)
+  OUTPUT (LIST "LOCAL (WORD "" :name) "MAKE (WORD "" :name) QUOTED :value)
   ; OUTPUT (list "local (word "" :name) "apply ""make (list :name :value))
 END
 
@@ -23,6 +23,13 @@ END
 ;   command.  Same as MAKE but with the inputs in reverse order.
 TO NAME :value :varname
   MAKE :varname :value
+END
+
+; QUOTED thing
+;   outputs its input, if a list; outputs its input with a quotation
+;   mark prepended, if a word.
+TO QUOTED :thing
+  IFELSE WORD? :thing [OUTPUT WORD "" :thing] [OUTPUT :thing]
 END
 
 ; REVERSE list
@@ -58,5 +65,5 @@ COPYDEF "WORD? "WORDP
 
 
 ; The welcome message shows up when the library is loaded
-PR [Tortoise Logo v0.0.11 (https://github.com/julienq/tortoise)]
+PR [Tortoise Logo v0.0.12 (https://github.com/julienq/tortoise)]
 PR [Welcome to Logo]
