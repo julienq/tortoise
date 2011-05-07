@@ -11,6 +11,14 @@ END
 TO IGNORE :value
 END
 
+; LOCALMAKE varname value
+;   command.  Makes the named variable local, like LOCAL, and
+;   assigns it the given value, like MAKE.
+.MACRO LOCALMAKE :name :value
+  OUTPUT (LIST "LOCAL (WORD "" :name) "MAKE (WORD "" :name) :value)
+  ; OUTPUT (list "local (word "" :name) "apply ""make (list :name :value))
+END
+
 ; NAME value varname
 ;   command.  Same as MAKE but with the inputs in reverse order.
 TO NAME :value :varname
@@ -50,5 +58,5 @@ COPYDEF "WORD? "WORDP
 
 
 ; The welcome message shows up when the library is loaded
-PR [Tortoise Logo v0.0.10 (https://github.com/julienq/tortoise)]
+PR [Tortoise Logo v0.0.11 (https://github.com/julienq/tortoise)]
 PR [Welcome to Logo]

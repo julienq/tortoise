@@ -56,12 +56,18 @@ if (typeof Function.prototype.bind !== "function") {
   String.prototype.fmt = function()
   {
     var args = Array.prototype.slice.call(arguments);
-    return this.replace(/{(\d+)((?:\.\w+)*)}/g, function(_, p, d) {
-        return args[p] === undefined ? "" : populus.deref(args[p], d, args);
-      }).replace(/{(\w+)((?:\.\w+)*)}/g, function(_, p, d) {
+    if (args.length === 1 && typeof args[0] === "object" &&
+      !/{0((?:\.[\w:_-]+)*)}/.test(this)) {
+      return this.replace(/{([\w:_-]+)((?:\.[\w:_-]+)*)}/g, function(_, p, d) {
         return args[0] === undefined || args[0][p] === undefined ? "" :
           populus.deref(args[0][p], d, args);
       });
+    } else {
+      return this.replace(/{(\d+)((?:\.[\w:_-]+)*)}/g, function(_, p, d) {
+          return args[p] === undefined ? "" : populus.deref(args[p], d, args);
+      });
+    }
+
   };
 
   // Check that a string is a valid id
@@ -93,7 +99,7 @@ if (typeof Function.prototype.bind !== "function") {
       var derefs = d.split(".").splice(1);
       while (derefs.length > 0 && x) {
         var d_ = derefs.shift();
-        x = x && (d_ in x) ? x[d_] : "";
+        x = typeof x === "object" && d_ in x ? x[d_] : "";
       }
     }
     return typeof x === "function" && x.apply ?
@@ -219,6 +225,51 @@ if (typeof Function.prototype.bind !== "function") {
   populus.values = function(o)
   {
     return Object.keys(o).map(function(x) { return o[x]; });
+  };
+
+
+  // Base object for prototype inheritance
+  populus.$object =
+  {
+    // Call the function named f on the superclass of this object. The rest of
+    // the argument list is passed in the same manner as Function.call(); of
+    // course "this" is maintained.
+    // NOTE: the f argument is a *string*: it's the *name* of the function that
+    // we want to call, not the function itself!
+    call_super: function(f)
+    {
+      var g = this[f];
+      if (g) {
+        var key = "__super__" + f;
+        var q = this[key];
+        if (!q) {
+          for (var p = this; p && !p.hasOwnProperty(f);
+              p = Object.getPrototypeOf(p)) {
+          }
+        }
+        for (p = Object.getPrototypeOf(q || p); p && !p.hasOwnProperty(f);
+            p = Object.getPrototypeOf(p));
+        if (p && p.hasOwnProperty(f)) {
+          this[key] = p;
+          var v = p[f].apply(this, Array.prototype.slice.call(arguments, 1));
+          if (q) {
+            this[key] = q;
+          } else {
+            delete this[key];
+          }
+          return v;
+        }
+      }
+    },
+
+    // Check whether this object inherits from the given prototype, directly or
+    // indirectly
+    is_a: function(proto)
+    {
+      for (var p = Object.getPrototypeOf(this); p && p !== proto;
+          p = Object.getPrototypeOf(p));
+      return !!(p && p === proto);
+    },
   };
 
 })(typeof exports === "undefined" ? this.populus = {} : exports);

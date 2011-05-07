@@ -51,7 +51,7 @@
     lput: function() { return this; },
     show: function(surface) { return "undefined"; },
     show_internals: function() { return "$undefined={}"; },
-    toString: function() { return "undefined"; }
+    toString: function() { return "*undefined*"; }
   };
 
   // Simply return the value of the word, unless we're at the top execution
@@ -203,15 +203,13 @@
   logo.$list.run = function(f)
   {
     try {
-      var list = this.value.map($show).join(" ");
-      var tokens = logo.tokenize(list);
+      var tokens = logo.tokenize(this.toString());
       var scope = logo.scope;
       logo.scope = { things: Object.create(scope.things),
-        exit: function(value) { logo.scope = scope; f(undefined, value); } };
+        exit: function(error, value) { logo.scope = scope; f(error, value); } };
       (function loop(val) {
         if (tokens.length === 0) {
-          logo.scope = scope;
-          f(undefined, val);
+          logo.scope.exit(undefined, val);
         } else {
           logo.eval_token(tokens, loop, f);
         }
@@ -404,10 +402,12 @@
     logo.scope = logo.scope_global;
     try {
       var tokens = logo.tokenize(input);
-      if (tokens.length > 0 && tokens[0].is_procedure("TO")) {
+      if (tokens.length > 0 && (tokens[0].is_procedure("TO") ||
+          tokens[0].is_procedure(".MACRO"))) {
         if (logo.current_def) {
           f(logo.error(ERR_INTERNAL, "Shouldn't be in eval mode here?!"));
         } else {
+          var is_macro = tokens[0].is_procedure(".MACRO");
           var args = [];
           var to = logo.scope.current_procedure = tokens.shift();
           if (tokens.length > 0) {
@@ -422,7 +422,7 @@
               (function read_var() {
                 if (tokens.length === 0) {
                   logo.current_def = { to: to, name: name.value, args: args,
-                    source: input, tokens: [] };
+                    source: input, tokens: [], is_macro: is_macro };
                   f(undefined, false);
                 } else if (tokens.length === 1) {
                   f(logo.error(logo.ERR_DOESNT_LIKE, $show(tokens[0])));
@@ -479,7 +479,15 @@
       var scope = logo.scope;
       logo.scope = { things: Object.create(scope.things),
         current_procedure: logo.scope.current_procedure,
-        exit: function(value) { logo.scope = scope; f(undefined, value); } };
+        exit: function(error, value) {
+            logo.scope = scope;
+            if (error) {
+              f(error);
+            } else if (definition.is_macro) {
+            } else {
+              f(error, value);
+            }
+          } };
       var n = definition.args.length;
       (function eval_args(i) {
         if (i < n) {
@@ -501,7 +509,7 @@
                 f(logo.error(logo.ERR_INTERNAL,
                     "There should be no input left?!"));
               } else {
-                logo.scope.exit(value);
+                logo.scope.exit(undefined, value);
               }
             });
         }
@@ -777,31 +785,6 @@
 
 
   // Predefined procedures; from http://www.cs.berkeley.edu/~bh/usermanual
-  // TODO ARRAY, MDARRAY, LISTTOARRAY, ARRAYTOLIST, REVERSE, GENSYM, FIRSTS,
-  // BUTFIRSTS, MDITEM, PICK, REMOVE, REMDUP, QUOTED, SETITEM, MDSETITEM,
-  // .SETFIRST, .SETBF, .SETITEM, PUSH, POP, QUEUE, DEQUEUE, ARRAY?, BEFORE?,
-  // .EQ, SUBSTRING?, NUMBER?, BACKSLASHED?, ASCII, RAWASCII, CHAR, MEMBER,
-  // LOWERCASE, UPPERCASE, STANDOUT, PARSE, RUNPARSE, TYPE, READWORD,
-  // READRAWLINE, READCHAR, READCHARS, SHELL, SETPREFIX, PREFIX, OPENREAD,
-  // OPENWRITE, OPENAPPEND, OPENUPDATE, CLOSE, ALLOPEN, CLOSEALL, ERASEFILE,
-  // DRIBBLE, NODRIBBLE, SETREAD, SETWRITE, READER, WRITER, SETREADPOS,
-  // SETWRITEPOS, READPOS, WRITEPOS, EOF?, FILE?, KEY?, CLEARTEXT, SETCURSOR,
-  // CURSOR, SETMARGINS, SETTEXTCOLOR, INCREASEFONT, DECREASEFONT, SETTEXTSIZE,
-  // TEXTSIZE, SETFONT, FONT, MODULO, INT, ROUND, SQRT, POWER, EXP, LOG10, LN,
-  // SIN, RADSIN, COS, RADCOS, ARCTAN, RADARCTAN, ISEQ, RSEQ, RANDOM, RERANDOM,
-  // FORM, BITAND, BITOR, BITXOR, BITNOT, ASHIFT, LSHIFT, TO, DEFINE, TEXT,
-  // FULLTEXT, PROP, GPROP, REMPROP, PLIST, PROCEDURE?, PRIMITIVE?, DEFINED?,
-  // NAME?, PLIST?, CONTENTS, BURIED, TRACED, STEPPED, PROCEDURES, NAMES,
-  // PLISTS, NAMELIST, PLLIST, ARITY, NODES, POALL, POPS, PONS, POPLS, PON,
-  // POPL, POT, POTS, ERASE, ERALL, ERPS, ERNS, ERPLS, ERN, ERPL, BURY,
-  // BURYALL, BURYNAME, UNBURY, UNBURYALL, UNBURYNAME, BURIED?, TRACE, UNTRACE,
-  // TRACED?, STEP, UNSTEP, STEPPED?, EDIT, EDITFILE, EDALL, EDPS, EDNS, EDPLS,
-  // EDN, EDPL, SAVE, SAVEL, LOAD, CSLSLOAD, HELP, SETEDITOR, SETLIBLOC,
-  // SETHELPLOC, SETCSLSLOC, SETTEMPLOC, GC, .SETSEGMENTSIZE, FOREVER,
-  // REPCOUNT, CATCH, THROW, ERROR, PAUSE, CONTINUE, WAIT, .MAYBEOUTPUT, GOTO,
-  // TAG, `, FOR, DO.WHILE, WHILE, DO.UNTIL, UNTIL, CASE, COND, APPLY, INVOKE,
-  // FOREACH, MAP, MAP.SE, FILTER, FIND, REDUCE, CROSSMAP, CASCADE, CASCADE.2,
-  // TRANSFER, .MACRO, MACRO?, MACROEXPAND
   logo.procedures = {
 
     // AND tf1 tf2
@@ -833,6 +816,16 @@
             g(undefined, value);
           }
         }, f, 2, logo.token());
+    },
+
+    // APPLY template inputlist
+    //   command or operation.  Runs the "template," filling its slots with
+    //   the members of "inputlist."  The number of members in "inputlist"
+    //   must be an acceptable number of slots for "template."  It is
+    //   illegal to apply the primitive TO as a template, but anything else
+    //   is okay.  APPLY outputs what "template" outputs, if anything.
+    APPLY: function(tokens, f)
+    {
     },
 
     // BUTFIRST wordorlist
@@ -1312,7 +1305,9 @@
     //   but the procedure that invokes OUTPUT is an operation.
     OUTPUT: function(tokens, f)
     {
-      logo.eval_token(tokens, function(value) { logo.scope.exit(value); }, f);
+      logo.eval_token(tokens, function(value) {
+          logo.scope.exit(undefined, value);
+        }, f);
     },
 
     // PRIMITIVES
@@ -1541,7 +1536,7 @@
 	  //   command.  Ends the running of the procedure in which it appears.
     //   Control is returned to the context in which that procedure was
     //   invoked.  The stopped procedure does not output a value.
-    STOP: function(tokens, f) { logo.scope.exit(logo.token()); },
+    STOP: function(tokens, f) { logo.scope.exit(undefined, logo.token()); },
 
     // SUM num1 num2
     // (SUM num1 num2 num3 ...)
