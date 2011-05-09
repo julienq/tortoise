@@ -231,6 +231,13 @@ if (typeof Function.prototype.bind !== "function") {
   // Base object for prototype inheritance
   populus.$object =
   {
+    // Same as populus.listen, with this object being the one whose events we
+    // want to listen to
+    add_listener: function(name, handler)
+    {
+      populus.listen(this, name, handler);
+    },
+
     // Call the function named f on the superclass of this object. The rest of
     // the argument list is passed in the same manner as Function.call(); of
     // course "this" is maintained.
@@ -270,6 +277,17 @@ if (typeof Function.prototype.bind !== "function") {
           p = Object.getPrototypeOf(p));
       return !!(p && p === proto);
     },
+
+    // Same as populus.notify, except that the object becomes the source by
+    // default (so no need to pass it) and the name is passed as the first
+    // argument, with (optional) additional arguments following
+    notify: function(name, e)
+    {
+      if (typeof e !== "object") e = {};
+      e.source = this;
+      e.name = name;
+      populus.notify(e);
+    },
   };
 
 })(typeof exports === "undefined" ? this.populus = {} : exports);
@@ -283,7 +301,9 @@ if (typeof Element !== "undefined") {
   Element.prototype.add_class = function(c)
   {
     var k = this.className;
-    if (!this.has_class(c)) this.className = "{0}{1}{2}".fmt(k, k ? " " : "", c);
+    if (!this.has_class(c)) {
+      this.className = "{0}{1}{2}".fmt(k, k ? " " : "", c);
+    }
   };
 
   // Append a newly created text node as a child of the element
@@ -321,9 +341,9 @@ if (typeof Element !== "undefined") {
     return nth(this.firstChild, index);
   };
 
-  // Get the rect resulting of the overlap between the element's bounding box and
-  // the given rect. If there is no overlap, return undefined. The coordinates
-  // are given in page coordinates rather than client.
+  // Get the rect resulting of the overlap between the element's bounding box
+  // and the given rect. If there is no overlap, return undefined. The
+  // coordinates are given in page coordinates rather than client.
   Element.prototype.overlapping_rect = function(rect)
   {
     var bbox = this.getBoundingPageRect();
@@ -358,8 +378,8 @@ if (typeof Element !== "undefined") {
     }
   };
 
-  // Remove the given class from an element and return it. If it did not have the
-  // class to start with, return an empty string.
+  // Remove the given class from an element and return it. If it did not have
+  // the class to start with, return an empty string.
   Element.prototype.remove_class = function(c)
   {
     var removed = "";
@@ -368,8 +388,8 @@ if (typeof Element !== "undefined") {
     return removed;
   };
 
-  // Set the class c on the element if and only if the predicate p is true; so if
-  // p is false, remove it.
+  // Set the class c on the element if and only if the predicate p is true; so
+  // if p is false, remove it.
   Element.prototype.set_class_iff = function(c, p)
   {
     this[(p ? "add" : "remove") + "_class"](c);
@@ -472,6 +492,151 @@ if (typeof Element !== "undefined") {
       populus.log(req.responseText);
     } else {
       populus.log("XMLHttpRequest returned status {0}", req.status);
+    }
+  };
+
+
+  // Some useful controllers
+
+  // A push button; can be enabled, disabled, pushed. Sends an @activated event
+  // when pushed and released.
+  populus.$button = Object.create(populus.$object, {
+      enabled: { enumerable: true, configurable: true,
+          get: function() { return !this.elem.has_class("disabled"); },
+          set: function(x) { this.elem.set_class_iff("disabled", !x); } },
+      pushed: { enumerable: true, configurable: true,
+          get: function() { return this.elem.has_class("pushed"); },
+          set: function(x) { this.elem.set_class_iff("pushed", x); } },
+    });
+
+  // Create a button controller for a given element. It will receive a
+  // disabled pushed class at some point. A new button is initially enabled.
+  populus.button = function(elem, proto)
+  {
+    var o = Object.create(proto || populus.$button);
+    o.elem = elem;
+    o.enabled = true;
+    o.pushed = false;
+    elem.addEventListener("mousedown", o, false);
+    elem.addEventListener("touchstart", o, false);
+    elem.addEventListener("mouseout", o, false);
+    elem.addEventListener("touchcancel", o, false);
+    elem.addEventListener("mouseup", o, false);
+    elem.addEventListener("touchend", o, false);
+    return o;
+  };
+
+  // Handle mouse and touch events
+  populus.$button.handleEvent = function(e)
+  {
+    e.preventDefault();
+    if ((e.type === "mousedown" || e.type === "touchstart") && this.enabled) {
+      this.pushed = true;
+    } else if (e.type === "mouseout" || e.type === "touchcancel") {
+      this.pushed = false;
+    } else if ((e.type === "mouseup" || e.type === "touchup") && this.pushed) {
+      this.pushed = false;
+      this.notify("@activated");
+    }
+  };
+
+
+  // A general purpose block; notably it can be moved, resized, edited, pushed
+  // (like a button.)
+  populus.$block = Object.create(populus.$object, {
+      // Override can_move for finer control about the movable state of the
+      // block
+      can_move: { enumerable: true, configurable: true,
+          get: function() { return this.movable; } },
+    });
+
+  // Delegate to help handle block movement
+  populus.$block_delegate = Object.create(populus.$object);
+
+  populus.block_delegate = function(proto)
+  {
+    var o = Object.create(proto || populus.$block_delegate);
+    document.addEventListener("mousemove", o, false);
+    document.addEventListener("mouseup", o, false);
+    return o;
+  }
+
+  populus.default_block_delegate = populus.block_delegate();
+
+  // Create a block with attributes "movable", "selectable", "editable",
+  // "resizable", "pushable"
+  populus.block = function(elem, attrs, proto)
+  {
+    var o = Object.create(proto || populus.$block);
+    o.elem = elem;
+    o.delegate = populus.default_block_delegate;
+    if (!attrs) attrs = {};
+    o.movable = !!attrs.movable;
+    o.selectable = !!attrs.selectable;  // TODO
+    o.editable = !!attrs.editable;      // TODO
+    o.resizable = !!attrs.resizable;    // TODO
+    o.pushable = !!attrs.pushable;      // TODO
+    elem.addEventListener("mousedown", o, false);
+    elem.addEventListener("touchstart", o, false);
+    elem.addEventListener("touchmove", o.delegate, false);
+    elem.addEventListener("touchend", o.delegate, false);
+    return o;
+  };
+
+  // The block chooses which action to take when it gets a "down" event
+  populus.$block.handleEvent = function(e)
+  {
+    e.preventDefault();
+    if (this.can_move) this.delegate.block_start_moving(this, e);
+  };
+
+  // Delegate event handler
+  populus.$block_delegate.handleEvent = function(e)
+  {
+    e.preventDefault();
+    if (e.type === "mousemove" || e.type === "touchmove") {
+      this.block_move(e);
+    } else if (e.type === "mouseup" || e.type === "touchend") {
+      this.block_up(e);
+    }
+  };
+
+  // Start handling actions for a block
+  populus.$block_delegate.block_start_moving = function(block, e)
+  {
+    if (this.current_block) throw "A block is already moving!";
+    this.current_block = block;
+    this.current_block.elem.add_class("moving");
+    document.body.add_class("moving");
+    this.offset = populus.event_page_pos(e);
+    var x = this.current_block.elem.pixels("left");
+    var y = this.current_block.elem.pixels("top");
+    this.offset.x -= x;
+    this.offset.y -= y;
+    this.current_block.notify("@will-move", { pos: { x: x, y: y } });
+  };
+
+  // Keep moving
+  populus.$block_delegate.block_move = function(e)
+  {
+    if (this.current_block) {
+      var p = populus.event_page_pos(e);
+      var x = p.x - this.offset.x;
+      var y = p.y - this.offset.y;
+      this.current_block.elem.set_position(x, y);
+      this.current_block.notify("@moving", { pos: { x: x, y: y } });
+    }
+  };
+
+  // Stop handling actions for the current block (if any)
+  populus.$block_delegate.block_up = function(e)
+  {
+    if (this.current_block) {
+      this.current_block.elem.remove_class("moving");
+      document.body.remove_class("moving");
+      this.offset = null;
+      this.current_block.notify("@moved");
+      this.current_block = null;
     }
   };
 
