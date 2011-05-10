@@ -829,6 +829,30 @@
     {
     },
 
+    // ARCTAN num
+    // (ARCTAN x y)
+	  //   outputs the arctangent, in degrees, of its input.  With two
+	  //   inputs, outputs the arctangent of y/x, if x is nonzero, or
+    //   90 or -90 depending on the sign of y, if x is zero.
+    ARCTAN: function(tokens, f)
+    {
+      if (logo.scope.in_parens) {
+        logo.eval_number(tokens, function(x) {
+            logo.eval_number(tokens, function(y) {
+                if (x === 0) {
+                  f(undefined, logo.word(populus.sign(y) * 90));
+                } else {
+                  f(undefined, logo.word(Math.atan(y / x) * 180 / Math.PI));
+                }
+              }, f);
+          }, f);
+      } else {
+        logo.eval_number(tokens, function(num) {
+            f(undefined, logo.word(Math.atan(num) * 180 / Math.PI));
+          }, f);
+      }
+    },
+
     // BUTFIRST wordorlist
     // BF wordorlist
     //   if the input is a word, outputs a word containing all but the first
@@ -878,6 +902,15 @@
         }, f);
     },
 
+    // COS degrees
+	  //   outputs the cosine of its input, which is taken in degrees.
+    COS: function(tokens, f)
+    {
+      logo.eval_number(tokens, function(degrees) {
+          f(undefined, logo.word(Math.cos(degrees * Math.PI / 180)));
+        }, f);
+    },
+
     // COUNT thing
     //   outputs the number of characters in the input, if the input is a word;
     //   outputs the number of members in the input, if it is a list or an
@@ -886,8 +919,9 @@
     //   TODO arrays
     COUNT: function(tokens, f)
     {
-      logo.eval_token(tokens, function(v) { f(undefined, logo.word(v.count())); },
-        f);
+      logo.eval_token(tokens, function(v) {
+          f(undefined, logo.word(v.count()));
+        }, f);
     },
 
     // DIFFERENCE num1 num2
@@ -937,6 +971,15 @@
           logo.eval_token(tokens, function(thing2) {
               f(undefined, logo.word(thing1.equalp(thing2)));
             }, f);
+        }, f);
+    },
+
+    // EXP num
+	  //   outputs e (2.718281828+) to the input power.
+    EXP: function(num)
+    {
+      logo.eval_number(tokens, function(num) {
+          f(undefined, logo.word(Math.exp(num)));
         }, f);
     },
 
@@ -1102,6 +1145,18 @@
     //   superprocedure.
     IFTRUE: function(tokens, f) { if_test(tokens, f, true); },
 
+    // INT num
+	  //   outputs its input with fractional part removed, i.e., an integer
+    //   with the same sign as the input, whose absolute value is the
+    //   largest integer less than or equal to the absolute value of
+    //   the input.
+    INT: function(tokens, f)
+    {
+      logo.eval_number(tokens, function(num) {
+          f(undefined, logo.word(Math.floor(num)));
+        }, f);
+    },
+
     // ITEM index thing
 	  //   if the "thing" is a word, outputs the "index"th character of the
     //   word.  If the "thing" is a list, outputs the "index"th member of
@@ -1224,6 +1279,24 @@
       })();
     },
 
+    // LN num
+	  //   outputs the natural logarithm of the input.
+    LN: function(tokens, f)
+    {
+      logo.eval_number(tokens, function(num) {
+          f(undefined, logo.word(Math.log(num)));
+        }, f);
+    },
+
+    // LOG10 num
+    //   outputs the common logarithm of the input.
+    LOG10: function(tokens, f)
+    {
+      logo.eval_number(tokens, function(num) {
+          f(undefined, logo.word(Math.log(num) / Math.log(10)));
+        }, f);
+    },
+
     // LPUT thing list
     //   outputs a list equal to its second input with one extra member,
     //   the first input, at the end.  If the second input is a word,
@@ -1288,6 +1361,20 @@
         }, f);
     },
 
+    // MODULO num1 num2
+	  //   outputs the remainder on dividing "num1" by "num2"; both must be
+    //   integers and the result is an integer with the same sign as num2.
+    MODULO: function(tokens, f)
+    {
+      logo.eval_integer(tokens, function(num1) {
+          logo.eval_integer(tokens, function(num2) {
+              f(undefined,
+                logo.word(populus.sign(num2) * Math.abs(num1 % num2)));
+            }, f);
+        }, f);
+
+    },
+
     // NOTEQUALP thing1 thing2
     // NOTEQUAL? thing1 thing2
     // TODO thing1 <> thing2
@@ -1343,6 +1430,19 @@
     {
       logo.eval_token(tokens, function(value) {
           logo.scope.exit(undefined, value);
+        }, f);
+    },
+
+    // POWER num1 num2
+	  //   outputs "num1" to the "num2" power.  If num1 is negative, then
+    //   num2 must be an integer.
+    POWER: function(tokens, f)
+    {
+      logo.eval_number(tokens, function(num1) {
+          logo["eval_" + (num1 < 0 ? "integer" : "number")](tokens,
+            function(num2) {
+              f(undefined, logo.word(Math.pow(num1, num2)));
+            }, f);
         }, f);
     },
 
@@ -1448,6 +1548,50 @@
       }
     },
 
+    // RADARCTAN num
+    // (RADARCTAN x y)
+	  //   outputs the arctangent, in radians, of its input.  With two
+	  //   inputs, outputs the arctangent of y/x, if x is nonzero, or
+    //   pi/2 or -pi/2 depending on the sign of y, if x is zero.
+    //   The expression 2*(RADARCTAN 0 1) can be used to get the
+    //   value of pi.
+    RADARCTAN: function(tokens, f)
+    {
+      if (logo.scope.in_parens) {
+        logo.eval_number(tokens, function(x) {
+            logo.eval_number(tokens, function(y) {
+                if (x === 0) {
+                  f(undefined, logo.word(populus.sign(y) * Math.PI / 2));
+                } else {
+                  f(undefined, logo.word(Math.atan(y / x)));
+                }
+              }, f);
+          }, f);
+      } else {
+        logo.eval_number(tokens, function(num) {
+            f(undefined, logo.word(Math.atan(num)));
+          }, f);
+      }
+    },
+
+    // RADCOS radians
+	  //   outputs the cosine of its input, which is taken in radians.
+    RADCOS: function(tokens, f)
+    {
+      logo.eval_number(tokens, function(radians) {
+          f(undefined, logo.word(Math.cos(radians)));
+        }, f);
+    },
+
+    // RADSIN radians
+	  //   outputs the sine of its input, which is taken in radians.
+    RADSIN: function(tokens, f)
+    {
+      logo.eval_number(tokens, function(radians) {
+          f(undefined, logo.word(Math.sin(radians)));
+        }, f);
+    },
+
     // READLIST
     // RL
     //   reads a line from the read stream (initially the keyboard) and
@@ -1481,9 +1625,9 @@
     REMAINDER: function(tokens, f)
     {
       logo.eval_integer(tokens, function(num1) {
-          var sign = num1 < 0 ? -1 : 1;
           logo.eval_integer(tokens, function(num2) {
-              f(undefined, logo.word(sign * Math.abs(num1 % num2)));
+              f(undefined,
+                logo.word(populus.sign(num1) * Math.abs(num1 % num2)));
             }, f);
         }, f);
     },
@@ -1503,6 +1647,15 @@
                 }
               })();
             }, f);
+        }, f);
+    },
+
+    // ROUND num
+	  // outputs the nearest integer to the input.
+    ROUND: function(tokens, f)
+    {
+      logo.eval_number(tokens, function(num) {
+          f(undefined, logo.word(Math.round(num)));
         }, f);
     },
 
@@ -1566,6 +1719,28 @@
           logo.print(v.show());
           g(undefined, logo.token());
         }, f, 1);
+    },
+
+    // SIN degrees
+	  //   outputs the sine of its input, which is taken in degrees.
+    SIN: function(tokens, f)
+    {
+      logo.eval_number(tokens, function(degrees) {
+          f(undefined, logo.word(Math.sin(degrees * Math.PI / 180)));
+        }, f);
+    },
+
+    // SQRT num
+	  //   outputs the square root of the input, which must be nonnegative.
+    SQRT: function(tokens, f)
+    {
+      logo.eval_number(tokens, function(num) {
+          if (num < 0) {
+            f(logo.error(logo.ERR_DOESNT_LIKE, $show(num)));
+          } else {
+            f(undefined, logo.word(Math.sqrt(num)));
+          }
+        }, f);
     },
 
     // STOP
