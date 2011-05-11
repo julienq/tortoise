@@ -26,9 +26,6 @@
  * POSSIBILITY OF SUCH DAMAGE. */
 
 
-// Bugs
-// run (instead of eval_tokens) still has issue with the scope?
-
 // Functions in the logo namespace, or exported to a logo module if used with
 // node.js
 (function(logo) {
@@ -204,12 +201,10 @@
   {
     try {
       var tokens = logo.tokenize(this.toString());
-      var scope = logo.scope;
-      logo.scope = { things: Object.create(scope.things),
-        exit: function(error, value) { logo.scope = scope; f(error, value); } };
       (function loop(val) {
         if (tokens.length === 0) {
-          logo.scope.exit(undefined, val);
+          //logo.scope.exit(undefined, val);
+          f(undefined, val);
         } else {
           logo.eval_token(tokens, loop, f);
         }
@@ -827,6 +822,7 @@
     //   is okay.  APPLY outputs what "template" outputs, if anything.
     APPLY: function(tokens, f)
     {
+
     },
 
     // ARCTAN num
@@ -1028,6 +1024,25 @@
           } else {
             f(undefined, firsts);
           }
+        }, f);
+    },
+
+    // FOREVER instructionlist
+	  //   command.  Runs the "instructionlist" repeatedly, until something
+    //   inside the instructionlist (such as STOP or THROW) makes it stop.
+    FOREVER: function(tokens, f)
+    {
+      logo.eval_list(tokens, function(list) {
+          var scope = logo.scope;
+          logo.scope = { things: Object.create(scope.things),
+            repcount: 0, exit: function(error, value) {
+                logo.scope = scope;
+                f(error, value); } };
+          logo.repcount = 0;
+          (function repeat() {
+            ++logo.repcount;
+            list.run(repeat);
+          })();
         }, f);
     },
 
@@ -1632,17 +1647,33 @@
         }, f);
     },
 
+    // REPCOUNT
+	  //   outputs the repetition count of the innermost current REPEAT or
+    //   FOREVER, starting from 1.  If no REPEAT or FOREVER is active,
+    //   outputs -1.
+	  //   The abbreviation # can be used for REPCOUNT unless the REPEAT is
+    //   inside the template input to a higher order procedure such as
+    //   FOREACH, in which case # has a different meaning. (TODO)
+    REPCOUNT: function(tokens, f)
+    {
+      f(undefined, logo.word(logo.repcount || -1));
+    },
+
     // REPEAT num instructionlist
 	  //   command.  Runs the "instructionlist" repeatedly, "num" times.
     REPEAT: function(tokens, f)
     {
       logo.eval_integer(tokens, function(num) {
           logo.eval_list(tokens, function(list) {
+              var repcount = logo.repcount;
+              logo.repcount = 0;
               (function repeat() {
                 if (num <= 0) {
+                  logo.repcount = repcount;
                   f();
                 } else {
                   --num;
+                  ++logo.repcount;
                   list.run(repeat);
                 }
               })();
@@ -1803,6 +1834,23 @@
 
     // TO is handled in a special manner
     TO: function(tokens, f) { f(logo.error(logo.ERR_CANT_USE_HERE)); },
+
+    // WAIT time
+    //   command.  Delays further execution for "time" 60ths of a second.
+    //   Also causes any buffered characters destined for the terminal to
+    //   be printed immediately.  WAIT 0 can be used to achieve this
+    //   buffer flushing without actually waiting.
+    // TODO something about buffering in Node (if any)
+    WAIT: function(tokens, f)
+    {
+      logo.eval_number(tokens, function(time) {
+          if (time < 0) {
+            f(logo.error(logo.ERR_DOESNT_LIKE, $show(time)));
+          } else {
+            setTimeout(f, time * 1000 / 60);
+          }
+        }, f);
+    },
 
     // WORD word1 word2
     // (WORD word1 word2 word3 ...)

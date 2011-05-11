@@ -74,19 +74,29 @@ function eval_line(line)
   }
 }
 
+// Close the session
+// TODO if there is input, just discard it; if there is no input, actually quit
+function close()
+{
+  process.stdout.write("\n");
+  process.exit();
+}
+
 // Quit the REPL
 logo.procedures.BYE = function() { process.exit(); };
 
+// Node-specific implementation of print for Logo
 logo.print = function(str) { process.stdout.write(str + "\n"); };
 
+// Node-specific implementation of warn for Logo
 logo.warn = function(warning)
 {
   process.stderr.write("Warning #{0}: {1}\n".fmt(warning.error_code,
         warning.message));
 };
 
-// Read one line of input and call the continuation with the read line. This is
-// used by READLIST for instance.
+// Node-specific implemenation of read for use by READLIST (and others later.)
+// Read one line of input and call the continuation with the read line.
 logo.read = function(f)
 {
   RLI.removeListener("line", eval_line);
@@ -107,5 +117,6 @@ fs.readFile(LIB, "utf8", function(error, data) {
     RLI = rl.createInterface(process.stdin, process.stdout);
     RLI.setPrompt(PROMPT[MODE]);
     RLI.on("line", eval_line);
+    RLI.on("close", close);
     RLI.prompt();
   });
