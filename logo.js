@@ -38,7 +38,6 @@
   {
     butfirst: function() { return this; },
     butlast: function() { return this; },
-    count: function() { return this; },
     equalp: function(t) { return false; },
     run: function(f) {
         f(logo.error(logo.ERR_DOESNT_LIKE, this.show())); },
@@ -74,7 +73,7 @@
           value: function(thing) { return thing.is_word && thing.count() === 1
             && this.toString().indexOf(thing) >= 0;  } },
       count: { enumerable: true, configurable: true,
-          value: function() { return this.toString().length; } },
+          get: function() { return this.toString().length; } },
       equalp: { enumerable: true, configurable: true,
           value: function(t) { return this.is_word &&
             this.value === t.value; } },
@@ -185,7 +184,7 @@
               return false;
             } },
       count: { enumerable: true, configurable: true,
-          value: function() { return this.value.length; } },
+          get: function() { return this.value.length; } },
       is_list: { enumerable: true, configurable: true, value: true },
       is_word: { enumerable: true, value: false },
       item: { enumerable: true,
@@ -916,7 +915,7 @@
     COUNT: function(tokens, f)
     {
       logo.eval_token(tokens, function(v) {
-          f(undefined, logo.word(v.count()));
+          f(undefined, logo.word(v.count));
         }, f);
     },
 
@@ -942,7 +941,7 @@
     EMPTYP: function(tokens, f)
     {
       logo.eval_token(tokens, function(thing) {
-          f(undefined, logo.word(thing.count() === 0))
+          f(undefined, logo.word(thing.count === 0))
         }, f);
     },
 
@@ -1013,7 +1012,7 @@
           var error;
           for (var i = 0, n = list.value.length, error; i < n && !error; ++i) {
             var v = list.value[i];
-            if (typeof v.count() !== "number" || v.count() === 0) {
+            if (typeof v.count !== "number" || v.count === 0) {
               error = logo.error(logo.ERR_DOESNT_LIKE, $show(v));
             } else {
               firsts.value.push(v.item(1));
@@ -1194,7 +1193,7 @@
     LAST: function(tokens, f)
     {
       logo.eval_token(tokens, function(v) {
-          f(undefined, v.item(v.count()));
+          f(undefined, v.item(v.count));
         }, f);
     },
 
