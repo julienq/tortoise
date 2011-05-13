@@ -70,7 +70,7 @@
               .substr(0, this.toString().length - 1));
             } },
       contains: { enumerable: true, configurable: true,
-          value: function(thing) { return thing.is_word && thing.count() === 1
+          value: function(thing) { return thing.is_word && thing.count === 1
             && this.toString().indexOf(thing) >= 0;  } },
       count: { enumerable: true, configurable: true,
           get: function() { return this.toString().length; } },
@@ -155,7 +155,6 @@
   // Apply this procedure: consume the necessary tokens for evaluating the
   // arguments and call the continuation function with an error or a value on
   // success.
-  // TODO: reset scope in_parens
   logo.$procedure.apply = function(tokens, f)
   {
     var p = logo.procedures[this.value];
