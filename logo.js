@@ -54,12 +54,13 @@
   // level in which case we don't know what to do with this value
   logo.$undefined.apply = function(tokens, f)
   {
-    if (logo.scope.current_procedure) {
+    if (logo.scope.current_token) {
       f(undefined, this);
     } else {
       f(logo.error(logo.ERR_WHAT_TO_DO, $show(this)));
     }
   };
+
 
   // A Logo word
   logo.$word = Object.create(logo.$undefined, {
@@ -159,12 +160,14 @@
   {
     var p = logo.procedures[this.value];
     if (typeof p === "function") {
-      var q = logo.scope.current_procedure;
-      logo.scope.current_procedure = this;
+      var parent = logo.scope;
+      logo.scope = Object.create(logo.scope);
+      logo.scope.parent = parent;
+      logo.scope.current_token = this;
       logo.scope.in_parens = !!this.in_parens;
       p(tokens, function(error, value) {
-          logo.scope.current_procedure = q;
-          logo.scope.in_parens = q && !!q.in_parens;
+          logo.scope = logo.scope.parent;
+          delete logo.scope.current_token;
           f(error, value);
         });
     } else {
@@ -194,14 +197,12 @@
     });
 
   // Evaluate the list as a list of tokens
-  // TODO check the current_procedure when evaluating the list
   logo.$list.run = function(f)
   {
     try {
       var tokens = logo.tokenize(this.toString());
       (function loop(val) {
         if (tokens.length === 0) {
-          //logo.scope.exit(undefined, val);
           f(undefined, val);
         } else {
           logo.eval_token(tokens, loop, f);
@@ -311,7 +312,7 @@
     var msg = logo.error_messages[code] || "Unknown error ({0})".fmt(code);
     var args = Array.prototype.slice.call(arguments, 1);
     // Add the current word to the list of argument
-    args.unshift($show(logo.scope.current_procedure));
+    args.unshift($show(logo.scope.current_token));
     return { error_code: code, message: String.prototype.fmt.apply(msg, args) };
   };
 
@@ -393,6 +394,7 @@
   logo.eval_input = function(input, f)
   {
     logo.scope = logo.scope_global;
+    logo.scope.exit = f;
     try {
       var tokens = logo.tokenize(input);
       if (tokens.length > 0 && (tokens[0].is_procedure("TO") ||
@@ -402,7 +404,8 @@
         } else {
           var is_macro = tokens[0].is_procedure(".MACRO");
           var args = [];
-          var to = logo.scope.current_procedure = tokens.shift();
+          var to = tokens.shift();
+          logo.scope.current_token = to;
           if (tokens.length > 0) {
             // Read the name of the procedure
             var name = tokens.shift();
@@ -416,6 +419,7 @@
                 if (tokens.length === 0) {
                   logo.current_def = { to: to, name: name.value, args: args,
                     source: input, tokens: [], is_macro: is_macro };
+                  delete logo.scope.current_token;
                   f(undefined, false);
                 } else if (tokens.length === 1) {
                   f(logo.error(logo.ERR_DOESNT_LIKE, $show(tokens[0])));
@@ -469,11 +473,11 @@
   {
     var p = function(tokens, f)
     {
-      var scope = logo.scope;
-      logo.scope = { things: Object.create(scope.things),
-        current_procedure: logo.scope.current_procedure,
+      var scope = { parent: logo.scope,
+        current_token: logo.scope.current_token,
+        things: Object.create(logo.scope.things),
         exit: function(error, value) {
-            logo.scope = scope;
+            logo.scope = logo.scope.parent;
             if (error) {
               f(error);
             } else if (definition.is_macro) {
@@ -482,6 +486,7 @@
               f(error, value);
             }
           } };
+      logo.scope = scope;
       var n = definition.args.length;
       (function eval_args(i) {
         if (i < n) {
@@ -489,12 +494,12 @@
               if (error) {
                 f(error);
               } else {
-                logo.scope.things[definition.args[i]] = value;
+                logo.scope.things[definition.args[i].toUpperCase()] = value;
                 eval_args(i + 1);
               }
             });
         } else {
-          delete logo.scope.current_procedure;
+          delete logo.scope.current_token;
           var tokens_ = definition.tokens.slice(0);
           logo.eval_loop(tokens_, function(error, value) {
               if (error) {
@@ -534,7 +539,6 @@
         logo.procedures[logo.current_def.name] =
           logo.make_procedure(logo.current_def);
         logo.current_def = null;
-        logo.scope.current_procedure = null;
         f(undefined, true, []);
       } else {
         logo.current_def.tokens = logo.current_def.tokens.concat(tokens);
@@ -1031,14 +1035,16 @@
     FOREVER: function(tokens, f)
     {
       logo.eval_list(tokens, function(list) {
-          var scope = logo.scope;
-          logo.scope = { things: Object.create(scope.things),
-            repcount: 0, exit: function(error, value) {
-                logo.scope = scope;
-                f(error, value); } };
-          logo.repcount = 0;
+          var scope = Object.create(logo.scope);
+          scope.parent = logo.scope;
+          scope.repcount = 0;
+          scope.exit = function(error, value) {
+            logo.scope = logo.scope.parent;
+            logo.scope.exit(error, value);
+          }
+          logo.scope = scope;
           (function repeat() {
-            ++logo.repcount;
+            ++logo.scope.repcount;
             list.run(repeat);
           })();
         }, f);
@@ -1332,7 +1338,7 @@
     MAKE: function(tokens, f)
     {
       logo.eval_word(tokens, function(varname) {
-          var name = varname.value;
+          var name = varname.value.toUpperCase();
           logo.eval_token(tokens, function(value) {
               if (logo.scope.things.hasOwnProperty(name)) {
                 logo.scope.things[name] = value;
@@ -1654,7 +1660,7 @@
     //   FOREACH, in which case # has a different meaning. (TODO)
     REPCOUNT: function(tokens, f)
     {
-      f(undefined, logo.word(logo.repcount || -1));
+      f(undefined, logo.word(logo.scope.repcount || -1));
     },
 
     // REPEAT num instructionlist
@@ -1663,15 +1669,17 @@
     {
       logo.eval_integer(tokens, function(num) {
           logo.eval_list(tokens, function(list) {
-              var repcount = logo.repcount;
-              logo.repcount = 0;
+              var scope = Object.create(logo.scope);
+              scope.parent = logo.scope;
+              scope.repcount = 0;
+              logo.scope = scope;
               (function repeat() {
                 if (num <= 0) {
-                  logo.repcount = repcount;
+                  logo.scope = logo.scope.parent;
                   f();
                 } else {
                   --num;
-                  ++logo.repcount;
+                  ++logo.scope.repcount;
                   list.run(repeat);
                 }
               })();
@@ -1821,7 +1829,7 @@
     THING: function(tokens, f)
     {
       logo.eval_word(tokens, function(varname) {
-          var val = logo.scope.things[varname.value];
+          var val = logo.scope.things[varname.value.toUpperCase()];
           if (val) {
             f(undefined, val);
           } else {
