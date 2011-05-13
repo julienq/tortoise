@@ -30,7 +30,12 @@
 // node.js
 (function(logo) {
 
+  // Global scope
   logo.scope_global = logo.scope = { things: {} };
+
+  // Global Mersenne Twister used by RANDOM/RERANDOM
+  if (typeof exports !== null) var populus = require("./spqr/populus");
+  MERSENNE_TWISTER = populus.mersenne_twister();
 
 
   // An undefined word (and the base for the hierarchy of tokens
@@ -1611,6 +1616,46 @@
         }, f);
     },
 
+    // RANDOM num
+    // (RANDOM start end)
+	  //   with one input, outputs a random nonnegative integer less than its
+    //   input, which must be a positive integer.
+    //   With two inputs, RANDOM outputs a random integer greater than or
+    //   equal to the first input, and less than or equal to the second
+    //   input.  Both inputs must be integers, and the first must be less
+    //   than the second.  (RANDOM 0 9) is equivalent to RANDOM 10;
+    //   (RANDOM 3 8) is equivalent to (RANDOM 6)+3.
+    RANDOM: function(tokens, f)
+    {
+      function random_int(max)
+      {
+        var bits = Math.ceil(Math.log(max) / Math.log(2));
+        if (bits === 0) return 0;
+        for (var n = max; n >= max; n = MERSENNE_TWISTER.$next(bits));
+        return n;
+      }
+      if (logo.scope.in_parens) {
+        logo.eval_integer(tokens, function(start) {
+            logo.eval_integer(tokens, function(end) {
+                if (end - start < 0) {
+                  f(logo.error(logo.ERR_DOESNT_LIKE, $show(start)));
+                } else {
+                  f(undefined, logo.word(start.value +
+                      random_int(end - start + 1)));
+                }
+              }, f);
+          }, f);
+      } else {
+        logo.eval_integer(tokens, function(num) {
+            if (num < 1) {
+              f(logo.error(logo.ERR_DOESNT_LIKE, $show(num)));
+            } else {
+              f(undefined, logo.word(random_int(num)));
+            }
+          }, f);
+      }
+    },
+
     // READLIST
     // RL
     //   reads a line from the read stream (initially the keyboard) and
@@ -1685,6 +1730,28 @@
               })();
             }, f);
         }, f);
+    },
+
+    // RERANDOM
+    // (RERANDOM seed)
+    //   command.  Makes the results of RANDOM reproducible.  Ordinarily
+    //   the sequence of random numbers is different each time Logo is
+    //   used.  If you need the same sequence of pseudo-random numbers
+    //   repeatedly, e.g. to debug a program, say RERANDOM before the
+    //   first invocation of RANDOM.  If you need more than one repeatable
+    //   sequence, you can give RERANDOM an integer input; each possible
+    //   input selects a unique sequence of numbers.
+    RERANDOM: function(tokens, f)
+    {
+      if (logo.scope.in_parens) {
+        logo.eval_integer(tokens, function(seed) {
+            MERSENNE_TWISTER.set_seed(seed.value);
+            f();
+          }, f);
+      } else {
+        MERSENNE_TWISTER.set_seed(1305301824911);
+        f();
+      }
     },
 
     // ROUND num

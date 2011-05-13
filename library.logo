@@ -25,6 +25,12 @@ TO NAME :value :varname
   MAKE :varname :value
 END
 
+; PICK list
+;   outputs a randomly chosen member of the input list.
+TO PICK :list
+  ITEM (RANDOM 1 COUNT :list) :list
+END
+
 ; QUOTED thing
 ;   outputs its input, if a list; outputs its input with a quotation
 ;   mark prepended, if a word.
