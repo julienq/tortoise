@@ -541,7 +541,7 @@
       logo.current_def.source += "\n" + input;
       if (tokens.length === 1 && tokens[0].is_procedure("END")) {
         // End function definition mode
-        logo.procedures[logo.current_def.name] =
+        logo.procedures[logo.current_def.name.toUpperCase()] =
           logo.make_procedure(logo.current_def);
         logo.current_def = null;
         f(undefined, true, []);
@@ -834,8 +834,8 @@
 
     // ARCTAN num
     // (ARCTAN x y)
-	  //   outputs the arctangent, in degrees, of its input.  With two
-	  //   inputs, outputs the arctangent of y/x, if x is nonzero, or
+    //   outputs the arctangent, in degrees, of its input.  With two
+    //   inputs, outputs the arctangent of y/x, if x is nonzero, or
     //   90 or -90 depending on the sign of y, if x is zero.
     ARCTAN: function(tokens, f)
     {
@@ -876,6 +876,27 @@
       logo.eval_token(tokens, function(v) { f(undefined, v.butlast()); }, f);
     },
 
+    // CONTENTS
+    //   outputs a "contents list," i.e., a list of three lists containing
+    //   names of defined procedures, variables, and property lists
+    //   respectively.  This list includes all unburied named items in
+    //   the workspace.
+    CONTENTS: function(tokens, f)
+    {
+      var contents = logo.list();
+      var procedures = logo.list();
+      for (var p in logo.procedures) {
+        if (!logo.procedures[p].primitive) procedures.value.push(logo.word(p));
+      }
+      contents.value.push(procedures);
+      var variables = logo.list();
+      for (var t in logo.scope.things) variables.value.push(logo.word(t));
+      contents.value.push(variables);
+      var plists = logo.list();
+      contents.value.push(plists);
+      f(undefined, contents);
+    },
+
     // COPYDEF newname oldname
     //   command.  Makes "newname" a procedure identical to "oldname".
     //   The latter may be a primitive.  If "newname" was already defined,
@@ -888,7 +909,7 @@
     {
       logo.eval_word(tokens, function(newname) {
           var n = newname.value.toUpperCase();
-          if (n in logo.procedures && !n._source) {
+          if (n in logo.procedures && n.primitive) {
             f(logo.error(logo.ERR_ALREADY_DEFINED, $show(newname)));
           } else {
             logo.eval_word(tokens, function(oldname) {
@@ -906,7 +927,7 @@
     },
 
     // COS degrees
-	  //   outputs the cosine of its input, which is taken in degrees.
+    //   outputs the cosine of its input, which is taken in degrees.
     COS: function(tokens, f)
     {
       logo.eval_number(tokens, function(degrees) {
@@ -977,8 +998,70 @@
         }, f);
     },
 
+    // ERASE contentslist
+    // ER contentslist
+    //   command.  Erases from the workspace the procedures, variables,
+    //   and property lists named in the input.  Primitive procedures may
+    //   not be erased unless the variable REDEFP has the value TRUE.
+    // TODO maybe don't erase function parameters?
+    ERASE: function(tokens, f)
+    {
+      var erase_variables = function(contentslist)
+      {
+        var vars = contentslist.value[1];
+        (function erase() {
+          if (vars.count === 0) {
+            erase_procedures(contentslist.value[0]);
+          } else {
+            var v = vars.value.shift().value.toUpperCase();
+            if (v in logo.scope.things) delete logo.scope.things[v];
+            erase();
+          }
+        })();
+      };
+      var erase_procedures = function(procedures)
+      {
+        (function erase() {
+          if (procedures.count === 0) {
+            f(undefined, logo.token());
+          } else {
+            var p = procedures.value.shift();
+            if (!p.is_word) {
+              f(logo.error(logo.ERR_DOESNT_LIKE, $show(p)));
+            } else {
+              var p_ = logo.procedures[p.value.toUpperCase()];
+              if (!p_) {
+                logo.warn(logo.error(logo.ERR_DOESNT_LIKE, $show(p)));
+              } else if (p_.primitive) {
+                logo.warn(logo.error(logo.ERR_IS_A_PRIMITIVE, $show(p)));
+              } else {
+                delete logo.procedures[p.value.toUpperCase()];
+              }
+              erase();
+            }
+          }
+        })();
+      };
+      logo.eval_token(tokens, function(contentslist) {
+          if (contentslist.is_word) {
+            var list = logo.list();
+            list.value.push(contentslist);
+            erase_procedures(list);
+          } else if (contentslist.is_list &&
+              contentslist.count === 3 &&
+              contentslist.value[0].is_list &&
+              contentslist.value[1].is_list &&
+              contentslist.value[2].is_list) {
+            // erase variables, which will call erase_procedures when done
+            erase_variables(contentslist);
+          } else {
+            erase_procedures(contentslist);
+          }
+        }, f);
+    },
+
     // EXP num
-	  //   outputs e (2.718281828+) to the input power.
+    //   outputs e (2.718281828+) to the input power.
     EXP: function(num)
     {
       logo.eval_number(tokens, function(num) {
@@ -987,7 +1070,7 @@
     },
 
     // FIRST thing
-	  //   if the input is a word, outputs the first character of the word.
+    //   if the input is a word, outputs the first character of the word.
     //   If the input is a list, outputs the first member of the list.
     //   If the input is an array, outputs the origin of the array (that is,
     //   the INDEX OF the first member of the array).
@@ -1004,12 +1087,12 @@
     //   list.  It is an error if any member of the input list is empty.
     //   (The input itself may be empty, in which case the output is also
     //   empty.)  This could be written as
-		//     to firsts :list
+    //     to firsts :list
     //     output map "first :list
     //     end
-	  //   but is provided as a primitive in order to speed up the iteration
+    //   but is provided as a primitive in order to speed up the iteration
     //   tools MAP, MAP.SE, and FOREACH.
-		//     to transpose :matrix
+    //     to transpose :matrix
     //     if emptyp first :matrix [op []]
     //     op fput firsts :matrix transpose bfs :matrix
     //     end
@@ -1035,7 +1118,7 @@
     },
 
     // FOREVER instructionlist
-	  //   command.  Runs the "instructionlist" repeatedly, until something
+    //   command.  Runs the "instructionlist" repeatedly, until something
     //   inside the instructionlist (such as STOP or THROW) makes it stop.
     FOREVER: function(tokens, f)
     {
@@ -1097,7 +1180,7 @@
 
     // IF tf instructionlist
     // (IF tf instructionlist1 instructionlist2)
-	  //   command.  If the first input has the value TRUE, then IF runs
+    //   command.  If the first input has the value TRUE, then IF runs
     //   the second input.  If the first input has the value FALSE, then
     //   IF does nothing.  (If given a third input, IF acts like IFELSE,
     //   as described below.)  It is an error if the first input is not
@@ -1157,20 +1240,20 @@
 
     // IFFALSE instructionlist
     // IFF instructionlist
-	  //   command.  Runs its input if the most recent TEST instruction had
+    //   command.  Runs its input if the most recent TEST instruction had
     //   a FALSE input.  The TEST must have been in the same procedure or a
     //   superprocedure.
     IFFALSE: function(tokens, f) { if_test(tokens, f, false); },
 
     // IFTRUE instructionlist
     // IFT instructionlist
-	  //   command.  Runs its input if the most recent TEST instruction had
+    //   command.  Runs its input if the most recent TEST instruction had
     //   a TRUE input.  The TEST must have been in the same procedure or a
     //   superprocedure.
     IFTRUE: function(tokens, f) { if_test(tokens, f, true); },
 
     // INT num
-	  //   outputs its input with fractional part removed, i.e., an integer
+    //   outputs its input with fractional part removed, i.e., an integer
     //   with the same sign as the input, whose absolute value is the
     //   largest integer less than or equal to the absolute value of
     //   the input.
@@ -1182,7 +1265,7 @@
     },
 
     // ITEM index thing
-	  //   if the "thing" is a word, outputs the "index"th character of the
+    //   if the "thing" is a word, outputs the "index"th character of the
     //   word.  If the "thing" is a list, outputs the "index"th member of
     //   the list.  If the "thing" is an array, outputs the "index"th
     //   member of the array.  "Index" starts at 1 for words and lists;
@@ -1198,7 +1281,7 @@
     },
 
     // LAST wordorlist
-	  //   if the input is a word, outputs the last character of the word.
+    //   if the input is a word, outputs the last character of the word.
     //   If the input is a list, outputs the last member of the list.
     LAST: function(tokens, f)
     {
@@ -1304,7 +1387,7 @@
     },
 
     // LN num
-	  //   outputs the natural logarithm of the input.
+    //   outputs the natural logarithm of the input.
     LN: function(tokens, f)
     {
       logo.eval_number(tokens, function(num) {
@@ -1376,8 +1459,8 @@
     //   the previous token is an infix operator or open parenthesis, or it is
     //   preceded by a space and followed by a nonspace.  There is a difference
     //   in binding strength between the two forms:
-    //     MINUS 3 + 4	means	-(3+4)
-    //     - 3 + 4		means	(-3)+4
+    //     MINUS 3 + 4  means  -(3+4)
+    //     - 3 + 4    means  (-3)+4
     MINUS: function(tokens, f)
     {
       logo.eval_number(tokens, function(num) {
@@ -1386,7 +1469,7 @@
     },
 
     // MODULO num1 num2
-	  //   outputs the remainder on dividing "num1" by "num2"; both must be
+    //   outputs the remainder on dividing "num1" by "num2"; both must be
     //   integers and the result is an integer with the same sign as num2.
     MODULO: function(tokens, f)
     {
@@ -1415,7 +1498,7 @@
 
     // OR tf1 tf2
     // (OR tf1 tf2 tf3 ...)
-	  //   outputs TRUE if any input is TRUE, otherwise FALSE.  All inputs
+    //   outputs TRUE if any input is TRUE, otherwise FALSE.  All inputs
     //   must be TRUE or FALSE.  (Comparison is case-insensitive regardless
     //   of the value of CASEIGNOREDP.  That is, "true" or "True" or "TRUE"
     //   are all the same.)  An input can be a list, in which case it is
@@ -1446,7 +1529,7 @@
 
     // OUTPUT value
     // OP value
-	  //   command.  Ends the running of the procedure in which it appears.
+    //   command.  Ends the running of the procedure in which it appears.
     //   That procedure outputs the value "value" to the context in which
     //   it was invoked.  Don't be confused: OUTPUT itself is a command,
     //   but the procedure that invokes OUTPUT is an operation.
@@ -1458,7 +1541,7 @@
     },
 
     // POWER num1 num2
-	  //   outputs "num1" to the "num2" power.  If num1 is negative, then
+    //   outputs "num1" to the "num2" power.  If num1 is negative, then
     //   num2 must be an integer.
     POWER: function(tokens, f)
     {
@@ -1479,7 +1562,7 @@
     {
       var list = logo.list();
       for (var p in logo.procedures) {
-        if (!logo.procedures[p]._source) list.value.push(logo.word(p));
+        if (logo.procedures[p].primitive) list.value.push(logo.word(p));
       }
       f(undefined, list);
     },
@@ -1519,10 +1602,11 @@
 
     // PRINTOUT contentslist
     // PO contentslist
-	  //   command.  Prints to the write stream the definitions of all
-	  //    procedures, variables, and property lists named in the input
+    //   command.  Prints to the write stream the definitions of all
+    //    procedures, variables, and property lists named in the input
     //    contents list.
-    PRINTOUT: function(tokens, f)
+    // TODO update for contentslist
+    /*PRINTOUT: function(tokens, f)
     {
       logo.eval_token(tokens, function(list) {
           var words = list.is_word ? [list] : list.value.slice(0);
@@ -1537,7 +1621,7 @@
                 var p = logo.procedures[word.value.toUpperCase()];
                 if (!p) {
                   f(logo.error(logo.ERR_DOESNT_LIKE, $show(word)));
-                } else if (!p._source) {
+                } else if (p.primitive) {
                   f(logo.error(logo.ERR_IS_A_PRIMITIVE, $show(word)));
                 } else {
                   logo.print(p._source);
@@ -1547,7 +1631,7 @@
             }
           })();
         }, f);
-    },
+    },*/
 
     // QUOTIENT num1 num2
     // (QUOTIENT num)
@@ -1574,8 +1658,8 @@
 
     // RADARCTAN num
     // (RADARCTAN x y)
-	  //   outputs the arctangent, in radians, of its input.  With two
-	  //   inputs, outputs the arctangent of y/x, if x is nonzero, or
+    //   outputs the arctangent, in radians, of its input.  With two
+    //   inputs, outputs the arctangent of y/x, if x is nonzero, or
     //   pi/2 or -pi/2 depending on the sign of y, if x is zero.
     //   The expression 2*(RADARCTAN 0 1) can be used to get the
     //   value of pi.
@@ -1599,7 +1683,7 @@
     },
 
     // RADCOS radians
-	  //   outputs the cosine of its input, which is taken in radians.
+    //   outputs the cosine of its input, which is taken in radians.
     RADCOS: function(tokens, f)
     {
       logo.eval_number(tokens, function(radians) {
@@ -1608,7 +1692,7 @@
     },
 
     // RADSIN radians
-	  //   outputs the sine of its input, which is taken in radians.
+    //   outputs the sine of its input, which is taken in radians.
     RADSIN: function(tokens, f)
     {
       logo.eval_number(tokens, function(radians) {
@@ -1618,7 +1702,7 @@
 
     // RANDOM num
     // (RANDOM start end)
-	  //   with one input, outputs a random nonnegative integer less than its
+    //   with one input, outputs a random nonnegative integer less than its
     //   input, which must be a positive integer.
     //   With two inputs, RANDOM outputs a random integer greater than or
     //   equal to the first input, and less than or equal to the second
@@ -1697,10 +1781,10 @@
     },
 
     // REPCOUNT
-	  //   outputs the repetition count of the innermost current REPEAT or
+    //   outputs the repetition count of the innermost current REPEAT or
     //   FOREVER, starting from 1.  If no REPEAT or FOREVER is active,
     //   outputs -1.
-	  //   The abbreviation # can be used for REPCOUNT unless the REPEAT is
+    //   The abbreviation # can be used for REPCOUNT unless the REPEAT is
     //   inside the template input to a higher order procedure such as
     //   FOREACH, in which case # has a different meaning. (TODO)
     REPCOUNT: function(tokens, f)
@@ -1709,7 +1793,7 @@
     },
 
     // REPEAT num instructionlist
-	  //   command.  Runs the "instructionlist" repeatedly, "num" times.
+    //   command.  Runs the "instructionlist" repeatedly, "num" times.
     REPEAT: function(tokens, f)
     {
       logo.eval_integer(tokens, function(num) {
@@ -1721,7 +1805,7 @@
               (function repeat() {
                 if (num <= 0) {
                   logo.scope = logo.scope.parent;
-                  f();
+                  f(undefined, logo.token());
                 } else {
                   --num;
                   ++logo.scope.repcount;
@@ -1746,16 +1830,16 @@
       if (logo.scope.in_parens) {
         logo.eval_integer(tokens, function(seed) {
             MERSENNE_TWISTER.set_seed(seed.value);
-            f();
+            f(undefined, logo.token());
           }, f);
       } else {
         MERSENNE_TWISTER.set_seed(1305301824911);
-        f();
+        f(undefined, logo.token());
       }
     },
 
     // ROUND num
-	  // outputs the nearest integer to the input.
+    // outputs the nearest integer to the input.
     ROUND: function(tokens, f)
     {
       logo.eval_number(tokens, function(num) {
@@ -1764,7 +1848,7 @@
     },
 
     // RUN instructionlist
-	  //   command or operation.  Runs the Logo instructions in the input
+    //   command or operation.  Runs the Logo instructions in the input
     //   list; outputs if the list contains an expression that outputs.
     RUN: function(tokens, f)
     {
@@ -1772,7 +1856,7 @@
     },
 
     // RUNRESULT instructionlist
-	  //   runs the instructions in the input; outputs an empty list if
+    //   runs the instructions in the input; outputs an empty list if
     //   those instructions produce no output, or a list whose only
     //   member is the output from running the input instructionlist.
     //   Useful for inventing command-or-operation control structures:
@@ -1826,7 +1910,7 @@
     },
 
     // SIN degrees
-	  //   outputs the sine of its input, which is taken in degrees.
+    //   outputs the sine of its input, which is taken in degrees.
     SIN: function(tokens, f)
     {
       logo.eval_number(tokens, function(degrees) {
@@ -1835,7 +1919,7 @@
     },
 
     // SQRT num
-	  //   outputs the square root of the input, which must be nonnegative.
+    //   outputs the square root of the input, which must be nonnegative.
     SQRT: function(tokens, f)
     {
       logo.eval_number(tokens, function(num) {
@@ -1848,7 +1932,7 @@
     },
 
     // STOP
-	  //   command.  Ends the running of the procedure in which it appears.
+    //   command.  Ends the running of the procedure in which it appears.
     //   Control is returned to the context in which that procedure was
     //   invoked.  The stopped procedure does not output a value.
     STOP: function(tokens, f) { logo.scope.exit(undefined, logo.token()); },
@@ -1869,7 +1953,7 @@
     },
 
     // TEST tf
-	  //   command.  Remembers its input, which must be TRUE or FALSE, for use
+    //   command.  Remembers its input, which must be TRUE or FALSE, for use
     //   by later IFTRUE or IFFALSE instructions.  The effect of TEST is local
     //   to the procedure in which it is used; any corresponding IFTRUE or
     //   IFFALSE must be in the same procedure or a subprocedure.
@@ -1887,11 +1971,11 @@
 
     // THING varname
     // :quoted.varname
-	  //   outputs the value of the variable whose name is the input.
+    //   outputs the value of the variable whose name is the input.
     //   If there is more than one such variable, the innermost local
     //   variable of that name is chosen.  The colon notation is an
     //   abbreviation not for THING but for the combination
-		//		 thing "
+    //     thing "
     //   so that :FOO means THING "FOO.
     THING: function(tokens, f)
     {

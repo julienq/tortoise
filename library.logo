@@ -14,8 +14,8 @@ END
 ; LOCALMAKE varname value
 ;   command.  Makes the named variable local, like LOCAL, and
 ;   assigns it the given value, like MAKE.
-.MACRO LOCALMAKE :name :value
-  OUTPUT (LIST "LOCAL (WORD "" :name) "MAKE (WORD "" :name) QUOTED :value)
+.MACRO LOCALMAKE :varname :value
+  OUTPUT (LIST "LOCAL WORD "" :varname "MAKE WORD "" :varname QUOTED :value)
   ; OUTPUT (list "local (word "" :name) "apply ""make (list :name :value))
 END
 
@@ -35,14 +35,14 @@ END
 ;   outputs its input, if a list; outputs its input with a quotation
 ;   mark prepended, if a word.
 TO QUOTED :thing
-  IFELSE WORD? :thing [OUTPUT WORD "" :thing] [OUTPUT :thing]
+  OUTPUT IFELSE WORD? :thing [OUTPUT WORD "" :thing] [OUTPUT :thing]
 END
 
 ; REVERSE list
 ;   outputs a list whose members are the members of the input list, in
 ;   reverse order.
 TO REVERSE :list
-  IFELSE EMPTYP :list
+  IFELSE EMPTY? :list
     [OUTPUT :list]
     [FPUT LAST :list REVERSE BUTLAST :list]
 END
@@ -63,7 +63,7 @@ COPYDEF "LIST? "LISTP
 COPYDEF "MEMBER? "MEMBERP
 COPYDEF "NOTEQUAL? "NOTEQUALP
 COPYDEF "OP "OUTPUT
-COPYDEF "PO "PRINTOUT
+;COPYDEF "PO "PRINTOUT
 COPYDEF "PR "PRINT
 COPYDEF "RL "READLIST
 COPYDEF "SE "SENTENCE

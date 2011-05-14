@@ -113,6 +113,7 @@ logo.read = function(f)
 fs.readFile(LIB, "utf8", function(error, data) {
     if (error) throw error;
     data.split("\n").forEach(eval_line);
+    for (var p in logo.procedures) logo.procedures[p].primitive = true;
     process.stdin.resume;
     RLI = rl.createInterface(process.stdin, process.stdout);
     RLI.setPrompt(PROMPT[MODE]);
