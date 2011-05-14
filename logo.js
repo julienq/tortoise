@@ -25,7 +25,6 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE. */
 
-
 // Functions in the logo namespace, or exported to a logo module if used with
 // node.js
 (function(logo) {
@@ -34,8 +33,8 @@
   logo.scope_global = logo.scope = { things: {} };
 
   // Global Mersenne Twister used by RANDOM/RERANDOM
-  if (typeof exports !== null) var populus = require("./spqr/populus");
-  MERSENNE_TWISTER = populus.mersenne_twister();
+  if (typeof exports === "object") populus = require("populus");
+  var MERSENNE_TWISTER = populus.mersenne_twister();
 
 
   // An undefined word (and the base for the hierarchy of tokens
@@ -2046,4 +2045,4 @@
     },
   };
 
-}(typeof exports === "undefined" ? this.logo = {} : exports));
+})(typeof exports === "undefined" ? this.logo = {} : exports);
