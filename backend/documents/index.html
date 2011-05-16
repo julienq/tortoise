@@ -13,9 +13,12 @@
       .cmd { color: #08f; }
       .warning { color: #f80; }
       .error { color: #ff4040; }
+      #canvas { position: relative; width: 854px; height: 480px; }
+      #canvas canvas { position: absolute; }
     </style>
   </head>
   <body>
+    <!--
     <svg id="svg_main" width="854px" height="480px"
       viewBox="-427 -240 854 480">
       <rect id="svg_bg" x="-427" y="-240" width="854" height="480"
@@ -23,11 +26,17 @@
       <g id="svg_fg"/>
       <path id="svg_turtle" fill="#ff4040" d="M8,0L0,-16L-8,0Z"/>
     </svg>
+    -->
+    <div id="canvas">
+      <canvas id="canvas_bg" width="854" height="480"></canvas>
+      <canvas id="canvas_fg" width="854" height="480"></canvas>
+      <canvas id="canvas_active" width="854" height="480"></canvas>
+    </div>
     <div id="out"><div id="out_"></div></div>
     <textarea id="cmdline" cols="80" rows="1" spellcheck="false"></textarea>
     <script src="populus.js"></script>
     <script src="logo.js"></script>
-    <script src="svg.js"></script>
+    <script src="canvas.js"></script>
     <script>
 
 var out = document.getElementById("out_");
@@ -105,6 +114,10 @@ logo.warn = function(warning)
   logo.print("Warning #{0}: {1}".fmt(warning.error_code, warning.message),
     "warning");
 };
+
+logo.init_canvas_turtle(document.getElementById("canvas_bg"),
+  document.getElementById("canvas_fg"),
+  document.getElementById("canvas_active"));
 
 eval_script("library.logo");
 eval_script("turtle.logo");
