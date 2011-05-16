@@ -7,7 +7,7 @@
 
   // Global Mersenne Twister used by RANDOM/RERANDOM
   if (typeof exports === "object") populus = require("populus");
-  var MERSENNE_TWISTER = populus.mersenne_twister();
+  var MERSENNE_TWISTER = populus.$mersenne_twister.new();
 
 
   // An undefined word (and the base for the hierarchy of tokens
@@ -1683,21 +1683,14 @@
     //   (RANDOM 3 8) is equivalent to (RANDOM 6)+3.
     RANDOM: function(tokens, f)
     {
-      function random_int(max)
-      {
-        var bits = Math.ceil(Math.log(max) / Math.log(2));
-        if (bits === 0) return 0;
-        for (var n = max; n >= max; n = MERSENNE_TWISTER.$next(bits));
-        return n;
-      }
       if (logo.scope.in_parens) {
         logo.eval_integer(tokens, function(start) {
             logo.eval_integer(tokens, function(end) {
                 if (end - start < 0) {
                   f(logo.error(logo.ERR_DOESNT_LIKE, $show(start)));
                 } else {
-                  f(undefined, logo.word(start.value +
-                      random_int(end - start + 1)));
+                  f(undefined, logo.word(MERSENNE_TWISTER
+                      .next_integer(start.value, end.value + 1)));
                 }
               }, f);
           }, f);
@@ -1706,7 +1699,7 @@
             if (num < 1) {
               f(logo.error(logo.ERR_DOESNT_LIKE, $show(num)));
             } else {
-              f(undefined, logo.word(random_int(num)));
+              f(undefined, logo.word(MERSENNE_TWISTER.next_integer(num.value)));
             }
           }, f);
       }
