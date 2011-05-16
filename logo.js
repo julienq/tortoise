@@ -11,21 +11,20 @@
 
 
   // An undefined word (and the base for the hierarchy of tokens
-  logo.$undefined =
-  {
-    butfirst: function() { return this; },
-    butlast: function() { return this; },
-    equalp: function(t) { return false; },
-    run: function(f) {
-        f(logo.error(logo.ERR_DOESNT_LIKE, this.show())); },
-    fput: function() { return this; },
-    is_procedure: function() { return false; },
-    item: function(i) { return this; },
-    lput: function() { return this; },
-    show: function(surface) { return "undefined"; },
-    show_internals: function() { return "$undefined={}"; },
-    toString: function() { return "*undefined*"; }
-  };
+  logo.$undefined = populus.$object.create({
+      butfirst: function() { return this; },
+      butlast: function() { return this; },
+      equalp: function(t) { return false; },
+      run: function(f) {
+          f(logo.error(logo.ERR_DOESNT_LIKE, this.show())); },
+      fput: function() { return this; },
+      is_procedure: function() { return false; },
+      item: function(i) { return this; },
+      lput: function() { return this; },
+      show: function(surface) { return "undefined"; },
+      show_internals: function() { return "$undefined={}"; },
+      toString: function() { return "*undefined*"; }
+    });
 
   // Simply return the value of the word, unless we're at the top execution
   // level in which case we don't know what to do with this value
@@ -34,6 +33,7 @@
     if (logo.scope.current_token) {
       f(undefined, this);
     } else {
+      console.log("Tokens:", tokens);
       f(logo.error(logo.ERR_WHAT_TO_DO, $show(this)));
     }
   };
@@ -151,6 +151,9 @@
       f(logo.error(logo.ERR_HOW_TO, this.show()));
     }
   };
+
+  // An infix procedure invocation token (e.g. +, -, etc.)
+  logo.$infix = logo.$procedure.create();
 
 
   // The list token has an array of tokens for values
