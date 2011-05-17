@@ -10,7 +10,7 @@
   var MERSENNE_TWISTER = populus.$mersenne_twister.new();
 
 
-  // An undefined word (and the base for the hierarchy of tokens
+  // An undefined word (and the base for the hierarchy of tokens)
   logo.$undefined = populus.$object.create({
       butfirst: function() { return this; },
       butlast: function() { return this; },
@@ -31,7 +31,8 @@
   logo.$undefined.apply = function(tokens, f)
   {
     if (tokens.length > 0 && tokens[0].is_a(logo.$infix)) {
-      console.log("Infix operator found, swapping tokens");
+      // show that the first value was swapped, so that - can tell whether it
+      // should expect another operand or not
       this.swapped = true;
       (tokens.splice(0, 1, this))[0].apply(tokens, f);
     } else if (logo.scope.current_token) {
@@ -172,6 +173,8 @@
           get: function() { return this.value.length; } },
       is_list: { enumerable: true, configurable: true, value: true },
       is_word: { enumerable: true, value: false },
+      init: { enumerable: true, configurable: true,
+          value: function() { this.value = []; } },
       item: { enumerable: true,
           value: function(i) { return this.value[i - 1]; }
         },
@@ -198,14 +201,14 @@
 
   logo.$list.butfirst = function()
   {
-    var list = logo.list();
+    var list = logo.$list.new();
     list.value = this.value.slice(1);
     return list;
   };
 
   logo.$list.butlast = function()
   {
-    var list = logo.list();
+    var list = logo.$list.new();
     list.value = this.value.slice(0, this.value.length - 1);
     return list;
   };
@@ -227,7 +230,7 @@
 
   logo.$list.fput = function(t)
   {
-    var list = logo.list();
+    var list = logo.$list.new();
     list.value = this.value.slice(0);
     list.value.unshift(t);
     return list;
@@ -235,9 +238,9 @@
 
   logo.$list.lput = function(t)
   {
-    var list = logo.list();
+    var list = logo.$list.new();
     list.value = this.value.slice(0);
-    list.value.shift(t);
+    list.value.push(t);
     return list;
   };
 
@@ -439,18 +442,6 @@
     }
   };
 
-  // Create an empty group
-  logo.group = function(proto)
-  {
-    return logo.list(proto || logo.$group);
-  };
-
-  // Create an empty list
-  logo.list = function(proto)
-  {
-    return logo.token([], undefined, proto || logo.$list);
-  };
-
   // Create a procedure from its definition (name, arguments, source and tokens)
   logo.make_procedure = function(definition)
   {
@@ -567,7 +558,7 @@
     while (input.length > 0) {
       input = input.replace(/^\s+/, "");
       if (m = input.match(/^\[/)) {
-        var l = logo.list();
+        var l = logo.$list.new();
         l.parent = current_list;
         push_token(l);
         current_list = l;
@@ -581,7 +572,7 @@
         m = input.match(/^[^\s\[\]]+/);
         push_token(logo.word(m[0]));
       } else if (m = input.match(/^\(/)) {
-        var g = logo.group();
+        var g = logo.$group.new();
         g.parent = current_group;
         push_token(g);
         current_group = g;
@@ -861,16 +852,16 @@
     //   the workspace.
     CONTENTS: function(tokens, f)
     {
-      var contents = logo.list();
-      var procedures = logo.list();
+      var contents = logo.$list.new();
+      var procedures = logo.$list.new();
       for (var p in logo.procedures) {
         if (!logo.procedures[p].primitive) procedures.value.push(logo.word(p));
       }
       contents.value.push(procedures);
-      var variables = logo.list();
+      var variables = logo.$list.new();
       for (var t in logo.scope.things) variables.value.push(logo.word(t));
       contents.value.push(variables);
-      var plists = logo.list();
+      var plists = logo.$list.new();
       contents.value.push(plists);
       f(undefined, contents);
     },
@@ -1022,7 +1013,7 @@
       };
       logo.eval_token(tokens, function(contentslist) {
           if (contentslist.is_word) {
-            var list = logo.list();
+            var list = logo.$list.new();
             list.value.push(contentslist);
             erase_procedures(list);
           } else if (contentslist.is_list &&
@@ -1076,7 +1067,7 @@
     //     end
     FIRSTS: function(tokens, f)
     {
-      var firsts = logo.list();
+      var firsts = logo.$list.new();
       logo.eval_list(tokens, function(list) {
           var error;
           for (var i = 0, n = list.value.length, error; i < n && !error; ++i) {
@@ -1303,7 +1294,7 @@
       logo.eval_slurp(tokens, function(v, list, g) {
           list.value.push(v);
           g(undefined, list);
-        }, f, 2, logo.list());
+        }, f, 2, logo.$list.new());
     },
 
     // LISTP thing
@@ -1538,7 +1529,7 @@
     //   as input will accept this list.)
     PRIMITIVES: function(tokens, f)
     {
-      var list = logo.list();
+      var list = logo.$list.new();
       for (var p in logo.procedures) {
         if (logo.procedures[p].primitive) list.value.push(logo.word(p));
       }
@@ -1842,7 +1833,7 @@
               if (error) {
                 f(error);
               } else {
-                var out = logo.list();
+                var out = logo.$list.new();
                 if (value.is_defined) out.value.push(value);
                 f(undefined, out);
               }
@@ -1865,7 +1856,7 @@
             sentence.value.push(thing);
           }
           g(undefined, sentence);
-        }, f, 2, logo.list());
+        }, f, 2, logo.$list.new());
     },
 
     // SHOW thing
