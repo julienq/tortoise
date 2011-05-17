@@ -1,3 +1,5 @@
+if (typeof exports === "object") populus = require("populus");
+
 // Functions in the logo namespace, or exported to a logo module if used with
 // node.js
 (function(logo) {
@@ -6,41 +8,40 @@
   logo.scope_global = logo.scope = { things: {} };
 
   // Global Mersenne Twister used by RANDOM/RERANDOM
-  if (typeof exports === "object") populus = require("populus");
   var MERSENNE_TWISTER = populus.$mersenne_twister.new();
-
 
   // An undefined word (and the base for the hierarchy of tokens)
   logo.$undefined = populus.$object.create({
+
+      // Simply return the value of the word, unless we're at the top execution
+      // level in which case we don't know what to do with this value
+      apply: function(tokens, f)
+      {
+        if (tokens.length > 0 && tokens[0].is_a(logo.$infix)) {
+          // show that the first value was swapped, so that - can tell whether
+          // it should expect another operand or not
+          this.swapped = true;
+          (tokens.splice(0, 1, this))[0].apply(tokens, f);
+        } else if (logo.scope.current_token) {
+          f(undefined, this);
+        } else {
+          f(logo.error(logo.ERR_WHAT_TO_DO, $show(this)));
+        }
+      },
+
       butfirst: function() { return this; },
       butlast: function() { return this; },
       equalp: function(t) { return false; },
-      run: function(f) {
-          f(logo.error(logo.ERR_DOESNT_LIKE, this.show())); },
       fput: function() { return this; },
       is_procedure: function() { return false; },
       item: function(i) { return this; },
       lput: function() { return this; },
+      run: function(f) { f(logo.error(logo.ERR_DOESNT_LIKE, this.show())); },
       show: function(surface) { return "undefined"; },
       show_internals: function() { return "$undefined={}"; },
       toString: function() { return "*undefined*"; }
-    });
 
-  // Simply return the value of the word, unless we're at the top execution
-  // level in which case we don't know what to do with this value
-  logo.$undefined.apply = function(tokens, f)
-  {
-    if (tokens.length > 0 && tokens[0].is_a(logo.$infix)) {
-      // show that the first value was swapped, so that - can tell whether it
-      // should expect another operand or not
-      this.swapped = true;
-      (tokens.splice(0, 1, this))[0].apply(tokens, f);
-    } else if (logo.scope.current_token) {
-      f(undefined, this);
-    } else {
-      f(logo.error(logo.ERR_WHAT_TO_DO, $show(this)));
-    }
-  };
+    });
 
 
   // A Logo word
@@ -594,8 +595,20 @@
           } else {
             push_token(logo.procedure(m[0].toUpperCase(), m[0]));
           }
-        } else if (m = input.match(/^<=|>=|<>|./)) {
-          push_token(logo.procedure(m[0], m[0], logo.$infix));
+        } else if (m = input.match(/^<=|>=|<>|=|<|>/)) {
+          var token = logo.procedure(m[0], m[0], logo.$infix);
+          token.precedence = 1;
+          push_token(token);
+        } else if (m = input.match(/^\+|\-/)) {
+          var token = logo.procedure(m[0], m[0], logo.$infix);
+          token.precedence = 2;
+          push_token(token);
+        } else if (m = input.match(/^\*|\//)) {
+          var token = logo.procedure(m[0], m[0], logo.$infix);
+          token.precedence = 3;
+          push_token(token);
+        } else if (m = input.match(/./)) {
+          push_token(logo.word(m[0]));
         }
       }
       if (m) input = input.substring(m[0].length);
@@ -811,16 +824,17 @@
       if (logo.scope.in_parens) {
         logo.eval_number(tokens, function(x) {
             logo.eval_number(tokens, function(y) {
-                if (x === 0) {
-                  f(undefined, logo.word(populus.sign(y) * 90));
+                if (x.value === 0) {
+                  f(undefined, logo.word(populus.sign(y.value) * 90));
                 } else {
-                  f(undefined, logo.word(Math.atan(y / x) * 180 / Math.PI));
+                  f(undefined,
+                    logo.word(populus.degrees(Math.atan(y.value / x.value))));
                 }
               }, f);
           }, f);
       } else {
         logo.eval_number(tokens, function(num) {
-            f(undefined, logo.word(Math.atan(num) * 180 / Math.PI));
+            f(undefined, logo.word(Math.atan(num.value) * 180 / Math.PI));
           }, f);
       }
     },
@@ -900,7 +914,7 @@
     COS: function(tokens, f)
     {
       logo.eval_number(tokens, function(degrees) {
-          f(undefined, logo.word(Math.cos(degrees * Math.PI / 180)));
+          f(undefined, logo.word(Math.cos(populus.radians(degrees.value))));
         }, f);
     },
 
@@ -1034,7 +1048,7 @@
     EXP: function(num)
     {
       logo.eval_number(tokens, function(num) {
-          f(undefined, logo.word(Math.exp(num)));
+          f(undefined, logo.word(Math.exp(num.value)));
         }, f);
     },
 
@@ -1129,7 +1143,7 @@
     {
       logo.eval_number(tokens, function(num1) {
           logo.eval_number(tokens, function(num2) {
-              f(undefined, logo.word(num1 >= num2));
+              f(undefined, logo.word(num1.value >= num2.value));
             }, f);
         }, f);
     },
@@ -1142,7 +1156,7 @@
     {
       logo.eval_number(tokens, function(num1) {
           logo.eval_number(tokens, function(num2) {
-              f(undefined, logo.word(num1 > num2));
+              f(undefined, logo.word(num1.value > num2.value));
             }, f);
         }, f);
     },
@@ -1229,7 +1243,7 @@
     INT: function(tokens, f)
     {
       logo.eval_number(tokens, function(num) {
-          f(undefined, logo.word(Math.floor(num)));
+          f(undefined, logo.word(Math.floor(num.value)));
         }, f);
     },
 
@@ -1244,7 +1258,7 @@
     {
       logo.eval_integer(tokens, function(index) {
           logo.eval_token(tokens, function(thing) {
-              f(undefined, thing.item(index));
+              f(undefined, thing.item(index.value));
             }, f);
         }, f);
     },
@@ -1267,7 +1281,7 @@
     {
       logo.eval_number(tokens, function(num1) {
           logo.eval_number(tokens, function(num2) {
-              f(undefined, logo.word(num1 <= num2));
+              f(undefined, logo.word(num1.value <= num2.value));
             }, f);
         }, f);
     },
@@ -1280,7 +1294,7 @@
     {
       logo.eval_number(tokens, function(num1) {
           logo.eval_number(tokens, function(num2) {
-              f(undefined, logo.word(num1 < num2));
+              f(undefined, logo.word(num1.value < num2.value));
             }, f);
         }, f);
     },
@@ -1360,7 +1374,7 @@
     LN: function(tokens, f)
     {
       logo.eval_number(tokens, function(num) {
-          f(undefined, logo.word(Math.log(num)));
+          f(undefined, logo.word(Math.log(num.value)));
         }, f);
     },
 
@@ -1369,7 +1383,7 @@
     LOG10: function(tokens, f)
     {
       logo.eval_number(tokens, function(num) {
-          f(undefined, logo.word(Math.log(num) / Math.log(10)));
+          f(undefined, logo.word(Math.log(num.value) / Math.log(10)));
         }, f);
     },
 
@@ -1433,7 +1447,7 @@
     MINUS: function(tokens, f)
     {
       logo.eval_number(tokens, function(num) {
-          f(undefined, logo.word(-num));
+          f(undefined, logo.word(-num.value));
         }, f);
     },
 
@@ -1445,7 +1459,8 @@
       logo.eval_integer(tokens, function(num1) {
           logo.eval_integer(tokens, function(num2) {
               f(undefined,
-                logo.word(populus.sign(num2) * Math.abs(num1 % num2)));
+                logo.word(populus.sign(num2.value) *
+                  Math.abs(num1.value % num2.value)));
             }, f);
         }, f);
 
@@ -1515,9 +1530,9 @@
     POWER: function(tokens, f)
     {
       logo.eval_number(tokens, function(num1) {
-          logo["eval_" + (num1 < 0 ? "integer" : "number")](tokens,
+          logo["eval_" + (num1.value < 0 ? "integer" : "number")](tokens,
             function(num2) {
-              f(undefined, logo.word(Math.pow(num1, num2)));
+              f(undefined, logo.word(Math.pow(num1.value, num2.value)));
             }, f);
         }, f);
     },
@@ -1637,16 +1652,16 @@
       if (logo.scope.in_parens) {
         logo.eval_number(tokens, function(x) {
             logo.eval_number(tokens, function(y) {
-                if (x === 0) {
-                  f(undefined, logo.word(populus.sign(y) * Math.PI / 2));
+                if (x.value === 0) {
+                  f(undefined, logo.word(populus.sign(y.value) * Math.PI / 2));
                 } else {
-                  f(undefined, logo.word(Math.atan(y / x)));
+                  f(undefined, logo.word(Math.atan(y.value / x.value)));
                 }
               }, f);
           }, f);
       } else {
         logo.eval_number(tokens, function(num) {
-            f(undefined, logo.word(Math.atan(num)));
+            f(undefined, logo.word(Math.atan(num.value)));
           }, f);
       }
     },
@@ -1656,7 +1671,7 @@
     RADCOS: function(tokens, f)
     {
       logo.eval_number(tokens, function(radians) {
-          f(undefined, logo.word(Math.cos(radians)));
+          f(undefined, logo.word(Math.cos(radians.value)));
         }, f);
     },
 
@@ -1665,7 +1680,7 @@
     RADSIN: function(tokens, f)
     {
       logo.eval_number(tokens, function(radians) {
-          f(undefined, logo.word(Math.sin(radians)));
+          f(undefined, logo.word(Math.sin(radians.value)));
         }, f);
     },
 
@@ -1683,7 +1698,7 @@
       if (logo.scope.in_parens) {
         logo.eval_integer(tokens, function(start) {
             logo.eval_integer(tokens, function(end) {
-                if (end - start < 0) {
+                if (end.value - start.value < 0) {
                   f(logo.error(logo.ERR_DOESNT_LIKE, $show(start)));
                 } else {
                   f(undefined, logo.word(MERSENNE_TWISTER
@@ -1693,7 +1708,7 @@
           }, f);
       } else {
         logo.eval_integer(tokens, function(num) {
-            if (num < 1) {
+            if (num.value < 1) {
               f(logo.error(logo.ERR_DOESNT_LIKE, $show(num)));
             } else {
               f(undefined, logo.word(MERSENNE_TWISTER.next_integer(num.value)));
@@ -1737,7 +1752,8 @@
       logo.eval_integer(tokens, function(num1) {
           logo.eval_integer(tokens, function(num2) {
               f(undefined,
-                logo.word(populus.sign(num1) * Math.abs(num1 % num2)));
+                logo.word(populus.sign(num1.value) *
+                  Math.abs(num1.value % num2.value)));
             }, f);
         }, f);
     },
@@ -1764,16 +1780,16 @@
               scope.parent = logo.scope;
               scope.repcount = 0;
               logo.scope = scope;
-              (function repeat() {
-                if (num <= 0) {
+              (function repeat(n) {
+                if (n <= 0) {
                   logo.scope = logo.scope.parent;
                   f(undefined, logo.token());
                 } else {
-                  --num;
+                  --n;
                   ++logo.scope.repcount;
                   list.run(repeat);
                 }
-              })();
+              })(num.value);
             }, f);
         }, f);
     },
@@ -1805,7 +1821,7 @@
     ROUND: function(tokens, f)
     {
       logo.eval_number(tokens, function(num) {
-          f(undefined, logo.word(Math.round(num)));
+          f(undefined, logo.word(Math.round(num.value)));
         }, f);
     },
 
@@ -1876,7 +1892,7 @@
     SIN: function(tokens, f)
     {
       logo.eval_number(tokens, function(degrees) {
-          f(undefined, logo.word(Math.sin(degrees * Math.PI / 180)));
+          f(undefined, logo.word(Math.sin(populus.radians(degrees.value))));
         }, f);
     },
 
@@ -1885,10 +1901,10 @@
     SQRT: function(tokens, f)
     {
       logo.eval_number(tokens, function(num) {
-          if (num < 0) {
+          if (num.value < 0) {
             f(logo.error(logo.ERR_DOESNT_LIKE, $show(num)));
           } else {
-            f(undefined, logo.word(Math.sqrt(num)));
+            f(undefined, logo.word(Math.sqrt(num.value)));
           }
         }, f);
     },
@@ -1963,10 +1979,10 @@
     WAIT: function(tokens, f)
     {
       logo.eval_number(tokens, function(time) {
-          if (time < 0) {
+          if (time.value < 0) {
             f(logo.error(logo.ERR_DOESNT_LIKE, $show(time)));
           } else {
-            setTimeout(f, time * 1000 / 60);
+            setTimeout(f, time.value * 1000 / 60);
           }
         }, f);
     },
@@ -2015,6 +2031,7 @@
   {
     logo.eval_number(tokens, function(num1) {
         logo.eval_number(tokens, function(num2) {
+            console.log("{0} + {1}".fmt(num1, num2));
             f(undefined, logo.word(num1.value + num2.value));
           }, f);
       }, f);
@@ -2037,6 +2054,7 @@
   {
     logo.eval_number(tokens, function(num1) {
         logo.eval_number(tokens, function(num2) {
+            console.log("{0} * {1}".fmt(num1, num2));
             f(undefined, logo.word(num1.value * num2.value));
           }, f);
       }, f);
