@@ -30,10 +30,13 @@
   // level in which case we don't know what to do with this value
   logo.$undefined.apply = function(tokens, f)
   {
-    if (logo.scope.current_token) {
+    if (tokens.length > 0 && tokens[0].is_a(logo.$infix)) {
+      console.log("Infix operator found, swapping tokens");
+      this.swapped = true;
+      (tokens.splice(0, 1, this))[0].apply(tokens, f);
+    } else if (logo.scope.current_token) {
       f(undefined, this);
     } else {
-      console.log("Tokens:", tokens);
       f(logo.error(logo.ERR_WHAT_TO_DO, $show(this)));
     }
   };
@@ -601,7 +604,7 @@
             push_token(logo.procedure(m[0].toUpperCase(), m[0]));
           }
         } else if (m = input.match(/^<=|>=|<>|./)) {
-          push_token(logo.procedure(m[0]));
+          push_token(logo.procedure(m[0], m[0], logo.$infix));
         }
       }
       if (m) input = input.substring(m[0].length);
@@ -1625,7 +1628,7 @@
       } else {
         logo.eval_number(tokens, function(num1) {
             logo.eval_number(tokens, function(num2) {
-                f(undefined, logo.word(num1 / num2));
+                f(undefined, logo.word(num1.value / num2.value));
               }, f);
           }, f);
       }
@@ -2012,6 +2015,103 @@
           g(undefined, logo.token());
         }, f, 1);
     },
+  };
+
+
+  // Infix operators
+
+  logo.procedures["+"] = function(tokens, f)
+  {
+    logo.eval_number(tokens, function(num1) {
+        logo.eval_number(tokens, function(num2) {
+            f(undefined, logo.word(num1.value + num2.value));
+          }, f);
+      }, f);
+  };
+
+  logo.procedures["-"] = function(tokens, f)
+  {
+    logo.eval_number(tokens, function(num1) {
+        if (num1.swapped) {
+          logo.eval_number(tokens, function(num2) {
+              f(undefined, logo.word(num1.value - num2.value));
+            }, f);
+        } else {
+          f(undefined, logo.word(-num1.value));
+        }
+      }, f);
+  };
+
+  logo.procedures["*"] = function(tokens, f)
+  {
+    logo.eval_number(tokens, function(num1) {
+        logo.eval_number(tokens, function(num2) {
+            f(undefined, logo.word(num1.value * num2.value));
+          }, f);
+      }, f);
+  };
+
+  logo.procedures["/"] = function(tokens, f)
+  {
+    logo.eval_number(tokens, function(num1) {
+        logo.eval_number(tokens, function(num2) {
+            f(undefined, logo.word(num1.value / num2.value));
+          }, f);
+      }, f);
+  };
+
+  logo.procedures["<"] = function(tokens, f)
+  {
+    logo.eval_number(tokens, function(num1) {
+        logo.eval_number(tokens, function(num2) {
+            f(undefined, logo.word(num1.value < num2.value));
+          }, f);
+      }, f);
+  };
+
+  logo.procedures["<="] = function(tokens, f)
+  {
+    logo.eval_number(tokens, function(num1) {
+        logo.eval_number(tokens, function(num2) {
+            f(undefined, logo.word(num1.value < num2.value));
+          }, f);
+      }, f);
+  };
+
+  logo.procedures[">"] = function(tokens, f)
+  {
+    logo.eval_number(tokens, function(num1) {
+        logo.eval_number(tokens, function(num2) {
+            f(undefined, logo.word(num1.value > num2.value));
+          }, f);
+      }, f);
+  };
+
+  logo.procedures[">="] = function(tokens, f)
+  {
+    logo.eval_number(tokens, function(num1) {
+        logo.eval_number(tokens, function(num2) {
+            f(undefined, logo.word(num1.value > num2.value));
+          }, f);
+      }, f);
+  };
+
+  logo.procedures["="] = function(tokens, f)
+  {
+    logo.eval_token(tokens, function(thing1) {
+        logo.eval_token(tokens, function(thing2) {
+            f(undefined, logo.word(thing1.equalp(thing2)));
+          }, f);
+      }, f);
+  };
+
+  logo.procedures["<>"] = function(tokens, f)
+  {
+    logo.eval_token(tokens, function(thing1) {
+        logo.eval_token(tokens, function(thing2) {
+            f(undefined, logo.word(!thing1.equalp(thing2)));
+          }, f);
+      }, f);
   };
 
 })(typeof exports === "undefined" ? this.logo = {} : exports);
