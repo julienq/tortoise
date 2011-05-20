@@ -1,6 +1,6 @@
 if (typeof exports === "object") {
+  trace = function(msg) { /*process.stderr.write(msg + "\n");*/ }
   populus = require("populus");
-  function trace(msg) { /*process.stderr.write(msg + "\n");*/ }
 } else {
   function trace(msg) { /*this.console && console.log(msg);*/ }
 }
@@ -36,8 +36,11 @@ if (typeof exports === "object") {
       apply: function(tokens, f)
       {
         trace("= {0} > {1}".fmt($scope(), this.show()));
-        if (!logo.scope.current_token) {
-          f(logo.error(logo.ERR_WHAT_TO_DO, this.show()));
+        if (tokens.length > 0 && tokens[0].is_a(logo.$infix) &&
+          tokens[0].precedence > (logo.scope.precedence || 0)) {
+          this.swapped = true;
+          var token = tokens.splice(0, 1, this)[0];
+          token.apply(tokens, f);
         } else {
           f(undefined, this);
         }
@@ -246,7 +249,15 @@ if (typeof exports === "object") {
       apply: function(tokens, f) {
           var tokens_ = this.value.slice(0);
           if (tokens_.length > 0) {
+            var scope = Object.create(logo.scope);
+            scope.parent = logo.scope;
+            delete scope.current_token;
+            delete scope.in_parens;
+            scope.precedence = 0;
+            logo.scope = scope;
+            trace("( {0}".fmt($scope()));
             logo.eval(tokens_, function(error, value) {
+                trace(") {0} {1}".fmt($scope(), error || value));
                 if (error || tokens_.length === 0) {
                   f(error, value);
                 } else {
@@ -327,13 +338,14 @@ if (typeof exports === "object") {
             f(error);
           } else {
             trace("? {0} {1}".fmt($scope(), $show(value)));
-            // Sometimes the value here is undefined, how come?
-            if (value && value.is_datum && tokens.length > 0 &&
+            if (value.is_datum && tokens.length > 0 &&
               tokens[0].is_a(logo.$infix) &&
               tokens[0].precedence > logo.scope.precedence) {
               value.swapped = true;
               var token = tokens.splice(0, 1, value)[0];
               token.apply(tokens, f);
+            } else if (value.is_datum && !logo.scope.current_token) {
+              f(logo.error(logo.ERR_WHAT_TO_DO, value.show()));
             } else {
               f(undefined, value);
             }
