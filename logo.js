@@ -1,4 +1,9 @@
-if (typeof exports === "object") populus = require("populus");
+if (typeof exports === "object") {
+  populus = require("populus");
+  function trace(msg) { /*process.stderr.write(msg + "\n");*/ }
+} else {
+  function trace(msg) { /*this.console && console.log(msg);*/ }
+}
 
 // Functions in the logo namespace, or exported to a logo module if used with
 // node.js
@@ -10,9 +15,34 @@ if (typeof exports === "object") populus = require("populus");
   // Global Mersenne Twister used by RANDOM/RERANDOM
   var MERSENNE_TWISTER = populus.$mersenne_twister.new();
 
+  // Show the current scope
+  function $scope()
+  {
+    var chain = "";
+    (function ch(scope) {
+      if (scope) {
+        ch(scope.parent);
+        chain += "[{0}{1}{2}]".fmt(scope.current_token, scope.in_parens ?
+          "()" : "",
+          scope.precedence > 0 ? "/{0}".fmt(scope.precedence) : "");
+      }
+    })(logo.scope);
+    return chain;
+  }
+
   // An undefined word (and the base for the hierarchy of tokens)
   logo.$undefined = populus.$object.create({
-      apply: function(tokens, f) { f(undefined, this); },
+
+      apply: function(tokens, f)
+      {
+        trace("= {0} > {1}".fmt($scope(), this.show()));
+        if (!logo.scope.current_token) {
+          f(logo.error(logo.ERR_WHAT_TO_DO, this.show()));
+        } else {
+          f(undefined, this);
+        }
+      },
+
       butfirst: function() { return this; },
       butlast: function() { return this; },
       equalp: function(t) { return false; },
@@ -21,7 +51,7 @@ if (typeof exports === "object") populus = require("populus");
       item: function(i) { return this; },
       lput: function() { return this; },
       run: function(f) { f(logo.error(logo.ERR_DOESNT_LIKE, this.show())); },
-      show: function(surface) { return "undefined"; },
+      show: function(surface) { return "$undefined"; },
       toString: function() { return "*undefined*"; }
     });
 
@@ -110,15 +140,16 @@ if (typeof exports === "object") populus = require("populus");
       {
         var p = logo.procedures[this.value];
         if (typeof p === "function") {
-          var parent = logo.scope;
-          logo.scope = Object.create(logo.scope);
-          logo.scope.parent = parent;
-          logo.scope.current_token = this;
-          logo.scope.in_parens = !!this.in_parens;
-          logo.scope.precedence = this.precedence;
+          var scope = Object.create(logo.scope);
+          scope.parent = logo.scope;
+          scope.current_token = this;
+          scope.in_parens = !!this.in_parens;
+          scope.precedence = this.precedence;
+          logo.scope = scope;
+          trace("< {0}".fmt($scope()));
           p(tokens, function(error, value) {
+              trace("> {0} = {1}".fmt($scope(), $show(value)));
               logo.scope = logo.scope.parent;
-              delete logo.scope.current_token;
               f(error, value);
             });
         } else {
@@ -194,7 +225,7 @@ if (typeof exports === "object") populus = require("populus");
               } else {
                 logo.eval_token(tokens, loop, f);
               }
-            })();
+            })(logo.$undefined.new());
           } catch(e) {
             f(e);
           }
@@ -289,16 +320,23 @@ if (typeof exports === "object") populus = require("populus");
   logo.eval = function(tokens, f)
   {
     if (tokens.length > 0) {
+      trace("? {0} <{1}>".fmt($scope(),
+            tokens.map(function(x) { return x.show(); }).join(" ")));
       tokens.shift().apply(tokens, function(error, value) {
-          console.log("< value: [{0}]{1}".fmt(value, $show(value)));
-          if (value.is_datum && tokens.length > 0 &&
-            tokens[0].is_a(logo.$infix) &&
-            tokens[0].precedence > logo.scope.precedence) {
-            value.swapped = true;
-            var token = tokens.splice(0, 1, value)[0];
-            token.apply(tokens, f);
+          if (error) {
+            f(error);
           } else {
-            f(error, value);
+            trace("? {0} {1}".fmt($scope(), $show(value)));
+            // Sometimes the value here is undefined, how come?
+            if (value && value.is_datum && tokens.length > 0 &&
+              tokens[0].is_a(logo.$infix) &&
+              tokens[0].precedence > logo.scope.precedence) {
+              value.swapped = true;
+              var token = tokens.splice(0, 1, value)[0];
+              token.apply(tokens, f);
+            } else {
+              f(undefined, value);
+            }
           }
         });
     } else {
@@ -621,12 +659,12 @@ if (typeof exports === "object") populus = require("populus");
     logo.eval(tokens, function(error, value) {
         if (error) {
           f(error);
-        } else if (!p(value)) {
-          f(logo.error(logo.ERR_DOESNT_LIKE, $show(value)));
         } else {
           var g_ = function(error, value) {
             if (error) {
               f(error);
+            } else if (!p(value)) {
+              f(logo.error(logo.ERR_DOESNT_LIKE, $show(value)));
             } else {
               g(value);
             }
