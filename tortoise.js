@@ -1,11 +1,14 @@
 // Node REPL for Logo
 
 var fs = require("fs");
+var path = require("path");
 var rl = require("readline");
 var populus = require("populus");
 var logo = require("logo");
 
 var LIB = "./library.logo";
+var TRACE = false;
+var HELP = false;
 var PROMPT = { eval: "? ", cont: "~ ", define: "> ", logo: "" };
 var MODE = "eval";
 var RLI = null;
@@ -81,6 +84,33 @@ logo.read = function(f)
   RLI.setPrompt(PROMPT.logo);
   RLI.prompt();
 };
+
+// Parse arguments from the command line
+function parse_args(args)
+{
+  var m;
+  args.forEach(function(arg) {
+      if (m = arg.match(/^t(race)$/)) {
+        TRACE = true;
+      } else if (m = arg.match(/^lib=(\S*)/)) {
+        LIB = m[1];
+      } else if (arg.match(/^h(elp)?$/i)) {
+        HELP = true;
+      }
+    });
+}
+
+// Show help info and quit
+function show_help(node, name)
+{
+  console.log("Usage: {0} {1} [lib=<path to lib>] [trace]".fmt(node,
+        path.basename(name)));
+  process.exit(0);
+}
+
+parse_args(process.argv.slice(2));
+if (HELP) show_help.apply(null, process.argv);
+if (TRACE) logo.trace = function(msg) { process.stderr.write(msg + "\n"); };
 
 // Read the library file (split line by line) then start prompting the user for
 // commands to execute
