@@ -1775,16 +1775,17 @@ if (typeof exports === "object") populus = require("populus");
               scope.parent = logo.scope;
               scope.repcount = 0;
               logo.scope = scope;
-              (function repeat(n) {
-                if (n <= 0) {
+              (function repeat() {
+                logo.trace("@ repeat {0}, #{1}"
+                  .fmt(num.show(), logo.scope.repcount));
+                if (logo.scope.repcount >= num.value) {
                   logo.scope = logo.scope.parent;
                   f(undefined, logo.$undefined.new());
                 } else {
-                  --n;
                   ++logo.scope.repcount;
                   list.run(repeat);
                 }
-              })(num.value);
+              })();
             }, f);
         }, f);
     },
@@ -1977,7 +1978,8 @@ if (typeof exports === "object") populus = require("populus");
           if (time.value < 0) {
             f(logo.error(logo.ERR_DOESNT_LIKE, $show(time)));
           } else {
-            setTimeout(f, time.value * 1000 / 60);
+            setTimeout(function() { f(undefined, logo.$undefined.new()); },
+              time.value * 1000 / 60);
           }
         }, f);
     },
