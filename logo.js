@@ -1,9 +1,4 @@
-if (typeof exports === "object") {
-  trace = function(msg) { /*process.stderr.write(msg + "\n");*/ }
-  populus = require("populus");
-} else {
-  function trace(msg) { /*this.console && console.log(msg);*/ }
-}
+if (typeof exports === "object") populus = require("populus");
 
 // Functions in the logo namespace, or exported to a logo module if used with
 // node.js
@@ -12,10 +7,13 @@ if (typeof exports === "object") {
   // Global scope
   logo.scope_global = logo.scope = { things: {} };
 
+  // Redefine this function to show trace messages
+  logo.trace = function() {};
+
   // Global Mersenne Twister used by RANDOM/RERANDOM
   var MERSENNE_TWISTER = populus.$mersenne_twister.new();
 
-  // Show the current scope
+  // Show the current scope (as used by trace)
   function $scope()
   {
     var chain = "";
@@ -30,20 +28,27 @@ if (typeof exports === "object") {
     return chain;
   }
 
+  // Check whether the current token is to be consumed by the current
+  // procedure or swapped with the following infix operator if any
+  function infix_swap(value, tokens, f)
+  {
+    if (value.is_datum && tokens.length > 0 && tokens[0].is_a(logo.$infix) &&
+        tokens[0].precedence > (logo.scope.precedence || 0)) {
+      logo.trace("% swap {0} {1}".fmt(value.show(), tokens[0].show()));
+      value.swapped = true;
+      tokens.splice(0, 1, value)[0].apply(tokens, f);
+    } else {
+      f(undefined, value);
+    }
+  }
+
   // An undefined word (and the base for the hierarchy of tokens)
   logo.$undefined = populus.$object.create({
 
       apply: function(tokens, f)
       {
-        trace("= {0} > {1}".fmt($scope(), this.show()));
-        if (tokens.length > 0 && tokens[0].is_a(logo.$infix) &&
-          tokens[0].precedence > (logo.scope.precedence || 0)) {
-          this.swapped = true;
-          var token = tokens.splice(0, 1, this)[0];
-          token.apply(tokens, f);
-        } else {
-          f(undefined, this);
-        }
+        logo.trace("= {0} > {1}".fmt($scope(), this.show()));
+        infix_swap(this, tokens, f);
       },
 
       butfirst: function() { return this; },
@@ -149,9 +154,9 @@ if (typeof exports === "object") {
           scope.in_parens = !!this.in_parens;
           scope.precedence = this.precedence;
           logo.scope = scope;
-          trace("< {0}".fmt($scope()));
+          logo.trace("< {0}".fmt($scope()));
           p(tokens, function(error, value) {
-              trace("> {0} = {1}".fmt($scope(), $show(value)));
+              logo.trace("> {0} = {1}".fmt($scope(), $show(value)));
               logo.scope = logo.scope.parent;
               f(error, value);
             });
@@ -255,9 +260,9 @@ if (typeof exports === "object") {
             delete scope.in_parens;
             scope.precedence = 0;
             logo.scope = scope;
-            trace("( {0}".fmt($scope()));
+            logo.trace("( {0}".fmt($scope()));
             logo.eval(tokens_, function(error, value) {
-                trace(") {0} {1}".fmt($scope(), error || value));
+                logo.trace(") {0} {1}".fmt($scope(), error || value));
                 if (error || tokens_.length === 0) {
                   f(error, value);
                 } else {
@@ -331,24 +336,22 @@ if (typeof exports === "object") {
   logo.eval = function(tokens, f)
   {
     if (tokens.length > 0) {
-      trace("? {0} <{1}>".fmt($scope(),
+      logo.trace("? {0} <{1}>".fmt($scope(),
             tokens.map(function(x) { return x.show(); }).join(" ")));
       tokens.shift().apply(tokens, function(error, value) {
           if (error) {
             f(error);
           } else {
-            trace("? {0} {1}".fmt($scope(), $show(value)));
-            if (value.is_datum && tokens.length > 0 &&
-              tokens[0].is_a(logo.$infix) &&
-              tokens[0].precedence > logo.scope.precedence) {
-              value.swapped = true;
-              var token = tokens.splice(0, 1, value)[0];
-              token.apply(tokens, f);
-            } else if (value.is_datum && !logo.scope.current_token) {
-              f(logo.error(logo.ERR_WHAT_TO_DO, value.show()));
-            } else {
-              f(undefined, value);
-            }
+            logo.trace("? {0} {1}".fmt($scope(), $show(value)));
+            infix_swap(value, tokens, function(error, value) {
+                if (error) {
+                  f(error);
+                } else if (value.is_datum && !logo.scope.current_token) {
+                  f(logo.error(logo.ERR_WHAT_TO_DO, value.show()));
+                } else {
+                  f(undefined, value);
+                }
+              });
           }
         });
     } else {
@@ -644,24 +647,16 @@ if (typeof exports === "object") {
         if (error) {
           f(error);
         } else {
-          var g_ = function(error, value) {
-            if (error) {
-              f(error);
-            } else {
-              g(value);
-            }
-          }
-          if (tokens.length > 0 &&
-            tokens[0].precedence > logo.scope.precedence) {
-            value.swapped = true;
-            var token = tokens.splice(0, 1, value)[0];
-            token.apply(tokens, g_);
-          } else {
-            g_(undefined, value);
-          }
+          infix_swap(value, tokens, function(error, value) {
+              if (error) {
+                f(error);
+              } else {
+                g(value);
+              }
+            });
         }
       });
-  }
+  };
 
   // Same as above, except that before invoking g with the value received from
   // eval, the predicate p is applied to the value to check that this value is
@@ -672,53 +667,45 @@ if (typeof exports === "object") {
         if (error) {
           f(error);
         } else {
-          var g_ = function(error, value) {
-            if (error) {
-              f(error);
-            } else if (!p(value)) {
-              f(logo.error(logo.ERR_DOESNT_LIKE, $show(value)));
-            } else {
-              g(value);
-            }
-          }
-          if (tokens.length > 0 &&
-            tokens[0].precedence > logo.scope.precedence) {
-            value.swapped = true;
-            var token = tokens.splice(0, 1, value)[0];
-            token.apply(tokens, g_);
-          } else {
-            g_(undefined, value);
-          }
+          infix_swap(value, tokens, function(error, value) {
+              if (error) {
+                f(error);
+              } else if (!p(value)) {
+                f(logo.error(logo.ERR_DOESNT_LIKE, $show(value)));
+              } else {
+                g(value);
+              }
+            });
         }
       });
-  }
+  };
 
   // Eval a token, making sure that it is a list
   logo.eval_boolean = function(tokens, g, f)
   {
     logo.eval_like(tokens, function(t) { return t.is_true || t.is_false; },
         g, f);
-  }
+  };
 
   logo.eval_integer = function(tokens, g, f)
   {
     logo.eval_like(tokens, function(t) { return t.is_integer; }, g, f);
-  }
+  };
 
   logo.eval_list = function(tokens, g, f)
   {
     logo.eval_like(tokens, function(t) { return t.is_list; }, g, f);
-  }
+  };
 
   logo.eval_number = function(tokens, g, f)
   {
     logo.eval_like(tokens, function(t) { return t.is_number; }, g, f);
-  }
+  };
 
   logo.eval_word = function(tokens, g, f)
   {
     logo.eval_like(tokens, function(t) { return t.is_word; }, g, f);
-  }
+  };
 
   // Wrapper around eval to slurp arguments within parens, or an expected
   // number of arguments. The function g gets called for each value with the
@@ -735,7 +722,7 @@ if (typeof exports === "object") {
             if (error) {
               f(error);
             } else {
-              var g_ = function(error, value) {
+              infix_swap(value, tokens, function(error, value) {
                   if (error) {
                     f(error);
                   } else {
@@ -747,20 +734,12 @@ if (typeof exports === "object") {
                         }
                       });
                   }
-                };
-              if (tokens.length > 0 &&
-                tokens[0].precedence > logo.scope.precedence) {
-                value.swapped = true;
-                var token = tokens.splice(0, 1, value)[0];
-                token.apply(tokens, g_);
-              } else {
-                g_(undefined, value);
-              }
+                });
             }
           });
       }
     })(n, init);
-  }
+  };
 
   // Wrapper for show to handle undefined values
   function $show(token)
@@ -948,7 +927,7 @@ if (typeof exports === "object") {
     },
 
     // DIFFERENCE num1 num2
-    // TODO num1 - num2
+    // num1 - num2
     //   outputs the difference of its inputs.  Minus sign means infix
     //   difference in ambiguous contexts (when preceded by a complete
     //   expression), unless it is preceded by a space and followed
@@ -975,7 +954,7 @@ if (typeof exports === "object") {
 
     // EQUALP thing1 thing2
     // EQUAL? thing1 thing2
-    // TODO thing1 = thing2
+    // thing1 = thing2
     //   outputs TRUE if the inputs are equal, FALSE otherwise.  Two numbers
     //   are equal if they have the same numeric value.  Two non-numeric words
     //   are equal if they contain the same characters in the same order.  If
@@ -1153,7 +1132,7 @@ if (typeof exports === "object") {
 
     // GREATEREQUALP num1 num2
     // GREATEREQUAL? num1 num2
-    // (TODO) num1 >= num2
+    // num1 >= num2
     //   outputs TRUE if its first input is greater than or equal to its second.
     GREATEREQUALP: function(tokens, f)
     {
@@ -1166,7 +1145,7 @@ if (typeof exports === "object") {
 
     // GREATERP num1 num2
     // GREATER? num1 num2
-    // (TODO) num1 > num2
+    // num1 > num2
     //   outputs TRUE if its first input is strictly greater than its second.
     GREATERP: function(tokens, f)
     {
@@ -1291,7 +1270,7 @@ if (typeof exports === "object") {
 
     // LESSEQUALP num1 num2
     // LESSEQUAL? num1 num2
-    // (TODO) num1 <= num2
+    // num1 <= num2
     //   outputs TRUE if its first input is less than or equal to its second.
     LESSEQUALP: function(tokens, f)
     {
@@ -1304,7 +1283,7 @@ if (typeof exports === "object") {
 
     // LESSP num1 num2
     // LESS? num1 num2
-    // (TODO) num1 < num2
+    // num1 < num2
     //   outputs TRUE if its first input is strictly less than its second.
     LESSP: function(tokens, f)
     {
@@ -1453,7 +1432,7 @@ if (typeof exports === "object") {
     },
 
     // MINUS num
-    // TODO - num
+    // - num
     //   outputs the negative of its input.  Minus sign means unary minus if
     //   the previous token is an infix operator or open parenthesis, or it is
     //   preceded by a space and followed by a nonspace.  There is a difference
@@ -1484,7 +1463,7 @@ if (typeof exports === "object") {
 
     // NOTEQUALP thing1 thing2
     // NOTEQUAL? thing1 thing2
-    // TODO thing1 <> thing2
+    // thing1 <> thing2
     //   outputs FALSE if the inputs are equal, TRUE otherwise.  See EQUALP
     //   for the meaning of equality for different data types.
     NOTEQUALP: function(tokens, f)
@@ -1587,7 +1566,7 @@ if (typeof exports === "object") {
 
     // PRODUCT num1 num2
     // (PRODUCT num1 num2 num3 ...)
-    // TODO num1 * num2
+    // num1 * num2
     //   outputs the product of its inputs.
     PRODUCT: function(tokens, f)
     {
@@ -1635,7 +1614,7 @@ if (typeof exports === "object") {
 
     // QUOTIENT num1 num2
     // (QUOTIENT num)
-    // TODO num1 / num2
+    // num1 / num2
     //   outputs the quotient of its inputs.  The quotient of two integers
     //   is an integer if and only if the dividend is a multiple of the divisor.
     //   (In other words, QUOTIENT 5 2 is 2.5, not 2, but QUOTIENT 4 2 is
@@ -1933,7 +1912,7 @@ if (typeof exports === "object") {
 
     // SUM num1 num2
     // (SUM num1 num2 num3 ...)
-    // TODO num1 + num2
+    // num1 + num2
     //   outputs the sum of its inputs.
     SUM: function(tokens, f)
     {
