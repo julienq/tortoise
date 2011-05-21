@@ -8,6 +8,7 @@ var logo = require("logo");
 
 var LIB = "./library.logo";
 var TRACE = false;
+var SEED = 0;
 var HELP = false;
 var PROMPT = { eval: "? ", cont: "~ ", define: "> ", logo: "" };
 var MODE = "eval";
@@ -94,6 +95,9 @@ function parse_args(args)
         TRACE = true;
       } else if (m = arg.match(/^lib=(\S*)/)) {
         LIB = m[1];
+      } else if (m = arg.match(/^seed=(\d+)/)) {
+        var s = parseInt(m[1], 10);
+        if (!s.isNaN) SEED = s;
       } else if (arg.match(/^h(elp)?$/i)) {
         HELP = true;
       }
@@ -103,14 +107,15 @@ function parse_args(args)
 // Show help info and quit
 function show_help(node, name)
 {
-  console.log("Usage: {0} {1} [lib=<path to lib>] [trace]".fmt(node,
-        path.basename(name)));
+  console.log("Usage: {0} {1} [lib=<path to lib>] [seed=<seed>] [trace]"
+      .fmt(node, path.basename(name)));
   process.exit(0);
 }
 
 parse_args(process.argv.slice(2));
 if (HELP) show_help.apply(null, process.argv);
 if (TRACE) logo.trace = function(msg) { process.stderr.write(msg + "\n"); };
+if (SEED) logo.set_seed(SEED);
 
 // Read the library file (split line by line) then start prompting the user for
 // commands to execute

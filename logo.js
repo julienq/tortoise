@@ -13,6 +13,9 @@ if (typeof exports === "object") populus = require("populus");
   // Global Mersenne Twister used by RANDOM/RERANDOM
   var MERSENNE_TWISTER = populus.$mersenne_twister.new();
 
+  // (Re)set the seed for the randomizer
+  logo.set_seed = function(seed) { MERSENNE_TWISTER.set_seed(seed); };
+
   // Show the current scope (as used by trace)
   function $scope()
   {
@@ -1807,7 +1810,7 @@ if (typeof exports === "object") populus = require("populus");
             f(undefined, logo.$undefined.new());
           }, f);
       } else {
-        MERSENNE_TWISTER.set_seed(1305301824911);
+        MERSENNE_TWISTER.set_seed();
         f(undefined, logo.$undefined.new());
       }
     },
