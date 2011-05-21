@@ -1,3 +1,5 @@
+// The main interpreter/library
+
 if (typeof exports === "object") populus = require("populus");
 
 // Functions in the logo namespace, or exported to a logo module if used with
@@ -138,10 +140,12 @@ if (typeof exports === "object") populus = require("populus");
 
       // Create a procedure invocation token with a precedence of 0 (for prefix
       // operators; infix operators can pass a precedence value)
+      // THING is a special case as it must bind more tightly than infix
+      // operators
       init: function(value, surface, precedence)
       {
         this.call_super("init", value, surface);
-        this.precedence = precedence || 0;
+        this.precedence = precedence || this.value === "THING" ? 4 : 0;
       },
 
       // Apply this procedure: consume the necessary tokens for evaluating the
@@ -577,7 +581,7 @@ if (typeof exports === "object") populus = require("populus");
         } else if (m = input.match(/^(:?)([^\s\[\]\(\)+\-*\/=<>;]+)/)) {
           if (m[1] === ":") {
             push_token(logo.$procedure.new("THING"));
-            push_token(logo.$procedure.new(m[2], m[0]));
+            push_token(logo.word(m[2], m[0]));
           } else {
             push_token(logo.$procedure.new(m[0].toUpperCase(), m[0]));
           }
@@ -1354,7 +1358,7 @@ if (typeof exports === "object") populus = require("populus");
       }
       (function local() {
         if (varnames.length === 0) {
-          f(undefined, logo.word());
+          f(undefined, logo.$undefined.new());
         } else {
           var varname = varnames.shift();
           if (!varname.is_word) {
@@ -1414,7 +1418,7 @@ if (typeof exports === "object") populus = require("populus");
               } else {
                 logo.scope_global.things[name] = value;
               }
-              f(undefined, logo.word());
+              f(undefined, logo.$undefined.new());
             }, f);
         }, f);
     },
