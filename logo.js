@@ -881,6 +881,7 @@ if (typeof exports === "object") populus = require("populus");
               };
               logo.trace("# {0} apply template (inputs)".fmt($scope()));
               if (template.is_word) {
+                // Second form: apply "function-name [arguments]
                 var group = logo.$group.new();
                 var procedure =
                   logo.$procedure.new(template.value.toUpperCase());
@@ -890,8 +891,31 @@ if (typeof exports === "object") populus = require("populus");
                     group.value.push(slot);
                   });
                 group.apply(tokens, logo.scope.exit);
+              } else if (template.is_list) {
+                if (template.count > 1 && template.value[0].is_list &&
+                    template.value[0].count === inputlist.count) {
+                  // Third form aka lambda
+                  var args = template.value.shift();
+                  logo.scope.things = Object.create(logo.scope.things);
+                  args.value.forEach(function(name, i) {
+                      // TODO error if name is not a word
+                      logo.scope.things[name.value.toUpperCase()] =
+                        logo.scope.slots[i];
+                    });
+                  template.run(function(error, value) {
+                    if (error) {
+                      f(error);
+                    } else {
+                      template.value.unshift(args);
+                      logo.scope.exit(undefined, value);
+                    }
+                  })
+                } else {
+                  // First form: apply [?1 + ?2] [x y]
+                  template.run(logo.scope.exit);
+                }
               } else {
-                template.run(logo.scope.exit);
+                f(logo.error(logo.ERR_DOESNT_LIKE(template.show())));
               }
             }, f);
         }, f);
