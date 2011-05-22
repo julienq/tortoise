@@ -570,8 +570,8 @@ if (typeof exports === "object") populus = require("populus");
           throw logo.error(logo.ERR_UNEXPECTED_BRACKET);
         }
       } else if (current_list) {
-        m = input.match(/^[^\s\[\]]+/);
-        push_token(logo.word(m[0]));
+        m = input.match(/^([^\s\[\]\\]|(\\.))+/);
+        push_token(logo.word(m[0].replace(/\\(.)/g, "$1", m[0])));
       } else if (m = input.match(/^\(/)) {
         var g = logo.$group.new();
         g.parent = current_group;
@@ -584,29 +584,30 @@ if (typeof exports === "object") populus = require("populus");
           throw logo.error(logo.ERR_UNEXPECTED_PAREN);
         }
       } else {
-        if (m = input.match(/^"([^\s\[\]\(\);]*)/)) {
-          push_token(logo.word(m[1], m[0]));
-        } else if (m = input.match(/^((\d+(\.\d*)?)|(\d*\.\d+))/)) {
-          // TODO look for a delimiter
+        if (m = input.match(/^"((?:[^\s\[\]\(\);\\]|(?:\\.))*)/)) {
+          push_token(logo.word(m[1].replace(/\\(.)/g, "$1"), m[0]));
+        } else if (m = input
+            .match(/^((\d+(\.\d*)?)|(\d*\.\d+))(?=[\s\[\]\(\)+\-*\/=<>;]|$)/)) {
           push_token(logo.word(m[0], m[0]));
-        } else if (m = input.match(/^\?(\d+)/)) {
-          // TODO look for a delimiter
+        } else if (m = input.match(/^\?(\d+)(?=[\s\[\]\(\)+\-*\/=<>;]|$)/)) {
           var group = logo.$group.new();
           var q = logo.$procedure.new("?");
           q.in_parens = true;
           group.value.push(q);
           group.value.push(logo.word(m[1]));
           push_token(group);
-        } else if (m = input.match(/^(:?)([^\s\[\]\(\)+\-*\/=<>;]+)/)) {
+        } else if (m = input
+            .match(/^(:?)((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/)) {
           if (m[1] === ":") {
             var group = logo.$group.new();
             var thing = logo.$procedure.new("THING");
             thing.in_parens = true;
             group.value.push(thing);
-            group.value.push(logo.word(m[2], m[0]));
+            group.value.push(logo.word(m[2].replace(/\\(.)/g, "$1"), m[0]));
             push_token(group);
           } else {
-            push_token(logo.$procedure.new(m[0].toUpperCase(), m[0]));
+            push_token(logo.$procedure
+                .new(m[0].replace(/\\(.)/g, "$1").toUpperCase(), m[0]));
           }
         } else if (m = input.match(/^(<=|>=|<>|=|<|>)/)) {
           push_token(logo.$infix.new(m[0], m[0], 1));
@@ -1050,6 +1051,21 @@ if (typeof exports === "object") populus = require("populus");
           logo.eval_number(tokens, function(num2) {
               f(undefined, logo.word(num1.value - num2.value));
             }, f);
+        }, f);
+    },
+
+    // - can be either DIFFERENCE or MINUS (if the first argument was not
+    // swapped)
+    "-": function(tokens, f)
+    {
+      logo.eval_number(tokens, function(num1) {
+          if (num1.swapped) {
+            logo.eval_number(tokens, function(num2) {
+                f(undefined, logo.word(num1.value - num2.value));
+              }, f);
+          } else {
+            f(undefined, logo.word(-num1.value));
+          }
         }, f);
     },
 
@@ -1678,6 +1694,16 @@ if (typeof exports === "object") populus = require("populus");
         }, f, 2, logo.word(1));
     },
 
+    // * is only binary, no slurping
+    "*": function(tokens, f)
+    {
+      logo.eval_number(tokens, function(num1) {
+          logo.eval_number(tokens, function(num2) {
+              f(undefined, logo.word(num1.value * num2.value));
+            }, f);
+        }, f);
+    },
+
     // PRINTOUT contentslist
     // PO contentslist
     //   command.  Prints to the write stream the definitions of all
@@ -1732,6 +1758,16 @@ if (typeof exports === "object") populus = require("populus");
               }, f);
           }, f);
       }
+    },
+
+    // / is only binary, no unary quotient
+    "/": function(tokens, f)
+    {
+      logo.eval_number(tokens, function(num1) {
+          logo.eval_number(tokens, function(num2) {
+              f(undefined, logo.word(num1.value / num2.value));
+            }, f);
+        }, f);
     },
 
     // RADARCTAN num
@@ -2014,6 +2050,16 @@ if (typeof exports === "object") populus = require("populus");
         }, f, 2, logo.word(0));
     },
 
+    // + is only binary, no slurping
+    "+": function(tokens, f)
+    {
+      logo.eval_number(tokens, function(num1) {
+          logo.eval_number(tokens, function(num2) {
+              f(undefined, logo.word(num1.value + num2.value));
+            }, f);
+        }, f);
+    },
+
     // TEST tf
     //   command.  Remembers its input, which must be TRUE or FALSE, for use
     //   by later IFTRUE or IFFALSE instructions.  The effect of TEST is local
@@ -2110,102 +2156,6 @@ if (typeof exports === "object") populus = require("populus");
         }, f);
     },
 
-  };
-
-  // Infix operators
-
-  logo.procedures["+"] = function(tokens, f)
-  {
-    logo.eval_number(tokens, function(num1) {
-        logo.eval_number(tokens, function(num2) {
-            f(undefined, logo.word(num1.value + num2.value));
-          }, f);
-      }, f);
-  };
-
-  logo.procedures["-"] = function(tokens, f)
-  {
-    logo.eval_number(tokens, function(num1) {
-        if (num1.swapped) {
-          logo.eval_number(tokens, function(num2) {
-              f(undefined, logo.word(num1.value - num2.value));
-            }, f);
-        } else {
-          f(undefined, logo.word(-num1.value));
-        }
-      }, f);
-  };
-
-  logo.procedures["*"] = function(tokens, f)
-  {
-    logo.eval_number(tokens, function(num1) {
-        logo.eval_number(tokens, function(num2) {
-            f(undefined, logo.word(num1.value * num2.value));
-          }, f);
-      }, f);
-  };
-
-  logo.procedures["/"] = function(tokens, f)
-  {
-    logo.eval_number(tokens, function(num1) {
-        logo.eval_number(tokens, function(num2) {
-            f(undefined, logo.word(num1.value / num2.value));
-          }, f);
-      }, f);
-  };
-
-  logo.procedures["<"] = function(tokens, f)
-  {
-    logo.eval_number(tokens, function(num1) {
-        logo.eval_number(tokens, function(num2) {
-            f(undefined, logo.word(num1.value < num2.value));
-          }, f);
-      }, f);
-  };
-
-  logo.procedures["<="] = function(tokens, f)
-  {
-    logo.eval_number(tokens, function(num1) {
-        logo.eval_number(tokens, function(num2) {
-            f(undefined, logo.word(num1.value < num2.value));
-          }, f);
-      }, f);
-  };
-
-  logo.procedures[">"] = function(tokens, f)
-  {
-    logo.eval_number(tokens, function(num1) {
-        logo.eval_number(tokens, function(num2) {
-            f(undefined, logo.word(num1.value > num2.value));
-          }, f);
-      }, f);
-  };
-
-  logo.procedures[">="] = function(tokens, f)
-  {
-    logo.eval_number(tokens, function(num1) {
-        logo.eval_number(tokens, function(num2) {
-            f(undefined, logo.word(num1.value > num2.value));
-          }, f);
-      }, f);
-  };
-
-  logo.procedures["="] = function(tokens, f)
-  {
-    logo.eval_token(tokens, function(thing1) {
-        logo.eval_token(tokens, function(thing2) {
-            f(undefined, logo.word(thing1.equalp(thing2)));
-          }, f);
-      }, f);
-  };
-
-  logo.procedures["<>"] = function(tokens, f)
-  {
-    logo.eval_token(tokens, function(thing1) {
-        logo.eval_token(tokens, function(thing2) {
-            f(undefined, logo.word(!thing1.equalp(thing2)));
-          }, f);
-      }, f);
   };
 
 })(typeof exports === "undefined" ? this.logo = {} : exports);
