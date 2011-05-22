@@ -27,7 +27,8 @@ if (typeof exports === "object") populus = require("populus");
         ch(scope.parent);
         chain += "[{0}{1}{2}{3}]".fmt(scope.current_token, scope.in_parens ?
           "*" : scope.hasOwnProperty("group") ? "()" :
-            scope.hasOwnProperty("procedure") ? "&" : "",
+            scope.hasOwnProperty("procedure") ? "&" :
+            scope.hasOwnProperty("slots") ? "#" : "",
           scope.precedence > 0 ? "/{0}".fmt(scope.precedence) : "",
           scope.hasOwnProperty("exit") ? "!" : "");
       }
@@ -147,7 +148,8 @@ if (typeof exports === "object") populus = require("populus");
       init: function(value, surface, precedence)
       {
         this.call_super("init", value, surface);
-        this.precedence = precedence || this.value === "THING" ? 4 : 0;
+        this.precedence = precedence ||
+          (this.value === "THING" || this.value === "?") ? 4 : 0;
       },
 
       // Apply this procedure: consume the necessary tokens for evaluating the
@@ -352,14 +354,16 @@ if (typeof exports === "object") populus = require("populus");
           if (error) {
             f(error);
           } else {
-            logo.trace("} {0} {1}".fmt($scope(), $show(value)));
-            infix_swap(value, tokens, function(error, value) {
+            logo.trace("} {0} {1}".fmt($scope(), value.show()));
+            infix_swap(value, tokens, function(error, value_) {
                 if (error) {
                   f(error);
-                } else if (value.is_datum && !logo.scope.current_token) {
-                  f(logo.error(logo.ERR_WHAT_TO_DO, value.show()));
+                } else if (value_.is_datum && !logo.scope.current_token) {
+                  f(logo.error(logo.ERR_WHAT_TO_DO, value_.show()));
                 } else {
-                  f(undefined, value);
+                  logo.trace("} {0} after swap: {1}"
+                    .fmt($scope(), value_.show()));
+                  f(undefined, value_);
                 }
               });
           }
@@ -409,7 +413,7 @@ if (typeof exports === "object") populus = require("populus");
           if (tokens.length > 0) {
             // Read the name of the procedure
             var name = tokens.shift();
-            if (!name.is_word) {
+            if (!name.is_a(logo.$procedure)) {
               f(logo.error(logo.ERR_DOESNT_LIKE, $show(name)));
             } else if (name in logo.procedures) {
               f(logo.error(logo.ERR_ALREADY_DEFINED, $show(name)));
@@ -589,7 +593,12 @@ if (typeof exports === "object") populus = require("populus");
         if (m = input.match(/^"([^\s\[\]\(\);]*)/)) {
           push_token(logo.word(m[1], m[0]));
         } else if (m = input.match(/^((\d+(\.\d*)?)|(\d*\.\d+))/)) {
+          // TODO look for a delimiter
           push_token(logo.word(m[0], m[0]));
+        } else if (m = input.match(/^\?(\d+)/)) {
+          // TODO look for a delimiter
+          push_token(logo.$procedure.new("?"));
+          push_token(logo.word(m[1]));
         } else if (m = input.match(/^(:?)([^\s\[\]\(\)+\-*\/=<>;]+)/)) {
           if (m[1] === ":") {
             push_token(logo.$procedure.new("THING"));
@@ -666,11 +675,11 @@ if (typeof exports === "object") populus = require("populus");
         if (error) {
           f(error);
         } else {
-          infix_swap(value, tokens, function(error, value) {
+          infix_swap(value, tokens, function(error, value_) {
               if (error) {
                 f(error);
               } else {
-                g(value);
+                g(value_);
               }
             });
         }
@@ -853,7 +862,43 @@ if (typeof exports === "object") populus = require("populus");
     //   is okay.  APPLY outputs what "template" outputs, if anything.
     APPLY: function(tokens, f)
     {
-
+      logo.eval_token(tokens, function(template) {
+          logo.eval_list(tokens, function(inputlist) {
+              if (template.is_list) {
+                var parent = logo.scope;
+                logo.scope = Object.create(parent);
+                logo.scope.parent = parent;
+                logo.scope.slots = [];
+                logo.trace("# {0} apply template (list)".fmt($scope()));
+                try {
+                  var tokens = logo.tokenize(inputlist.toString());
+                  (function loop() {
+                    if (tokens.length === 0) {
+                      template.run(function(error, value) {
+                          if (error) {
+                            f(error);
+                          } else {
+                            logo.scope = parent;
+                            f(undefined, value);
+                          }
+                        });
+                    } else {
+                      logo.eval_token(tokens, function(value) {
+                          logo.scope.slots.push(value);
+                          logo.trace("# Slot #{0}={1}"
+                            .fmt(logo.scope.slots.length, value.show()));
+                          loop();
+                        }, f);
+                    }
+                  })();
+                } catch(e) {
+                  f(e);
+                }
+              } else {
+                f(logo.error(logo.ERR_DOESNT_LIKE, template.show()));
+              }
+            }, f);
+        }, f);
     },
 
     // ARCTAN num
@@ -2031,8 +2076,21 @@ if (typeof exports === "object") populus = require("populus");
         }, f);
     },
 
-  };
+    // Get the value of a numbered slot
+    "?": function(tokens, f)
+    {
+      logo.eval_integer(tokens, function(index) {
+          var i = index.value - 1;
+          logo.trace("# {0} get slot #{1}".fmt($scope(), index.show()));
+          if (logo.scope.slots && logo.scope.slots[i]) {
+            f(undefined, logo.scope.slots[i]);
+          } else {
+            f(logo.error(logo.ERR_DOESNT_LIKE, index.show()));
+          }
+        }, f);
+    },
 
+  };
 
   // Infix operators
 
