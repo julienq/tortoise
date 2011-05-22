@@ -864,38 +864,48 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_token(tokens, function(template) {
           logo.eval_list(tokens, function(inputlist) {
-              if (template.is_list) {
-                var parent = logo.scope;
-                logo.scope = Object.create(parent);
-                logo.scope.parent = parent;
-                logo.scope.slots = [];
-                logo.trace("# {0} apply template (list)".fmt($scope()));
-                try {
-                  var tokens = logo.tokenize(inputlist.toString());
-                  (function loop() {
-                    if (tokens.length === 0) {
-                      template.run(function(error, value) {
-                          if (error) {
-                            f(error);
-                          } else {
-                            logo.scope = parent;
-                            f(undefined, value);
-                          }
-                        });
-                    } else {
-                      logo.eval_token(tokens, function(value) {
-                          logo.scope.slots.push(value);
-                          logo.trace("# Slot #{0}={1}"
-                            .fmt(logo.scope.slots.length, value.show()));
-                          loop();
-                        }, f);
-                    }
-                  })();
-                } catch(e) {
-                  f(e);
+              var parent = logo.scope;
+              logo.scope = Object.create(parent);
+              logo.scope.parent = parent;
+              logo.scope.slots = [];
+              logo.scope.exit = function(error, value)
+              {
+                if (error) {
+                  f(error);
+                } else {
+                  logo.scope = parent;
+                  f(undefined, value);
                 }
-              } else {
-                f(logo.error(logo.ERR_DOESNT_LIKE, template.show()));
+              };
+              logo.trace("# {0} apply template (inputs)".fmt($scope()));
+              try {
+                var tokens = logo.tokenize(inputlist.toString());
+                (function loop() {
+                  if (tokens.length === 0) {
+                    if (template.is_word) {
+                      var group = logo.$group.new();
+                      var procedure =
+                        logo.$procedure.new(template.value.toUpperCase());
+                      procedure.in_parens = true;
+                      group.value.push(procedure);
+                      logo.scope.slots.forEach(function(slot) {
+                          group.value.push(slot);
+                        });
+                      group.apply(tokens, logo.scope.exit);
+                    } else {
+                      template_.run(logo.scope.exit);
+                    }
+                  } else {
+                    logo.eval_token(tokens, function(value) {
+                        logo.scope.slots.push(value);
+                        logo.trace("# Slot #{0}={1}"
+                          .fmt(logo.scope.slots.length, value.show()));
+                        loop();
+                      }, f);
+                  }
+                })();
+              } catch(e) {
+                f(e);
               }
             }, f);
         }, f);
