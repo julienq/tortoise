@@ -25,9 +25,11 @@ if (typeof exports === "object") populus = require("populus");
     (function ch(scope) {
       if (scope) {
         ch(scope.parent);
-        chain += "[{0}{1}{2}]".fmt(scope.current_token, scope.in_parens ?
-          "()" : "",
-          scope.precedence > 0 ? "/{0}".fmt(scope.precedence) : "");
+        chain += "[{0}{1}{2}{3}]".fmt(scope.current_token, scope.in_parens ?
+          "*" : scope.hasOwnProperty("group") ? "()" :
+            scope.hasOwnProperty("procedure") ? "&" : "",
+          scope.precedence > 0 ? "/{0}".fmt(scope.precedence) : "",
+          scope.hasOwnProperty("exit") ? "!" : "");
       }
     })(logo.scope);
     return chain;
@@ -266,6 +268,7 @@ if (typeof exports === "object") populus = require("populus");
             delete scope.current_token;
             delete scope.in_parens;
             scope.precedence = 0;
+            scope.group = true;
             logo.scope = scope;
             logo.trace("( {0}".fmt($scope()));
             logo.eval(tokens_, function(error, value) {
@@ -343,13 +346,13 @@ if (typeof exports === "object") populus = require("populus");
   logo.eval = function(tokens, f)
   {
     if (tokens.length > 0) {
-      logo.trace("? {0} <{1}>".fmt($scope(),
+      logo.trace("{ {0} <{1}>".fmt($scope(),
             tokens.map(function(x) { return x.show(); }).join(" ")));
       tokens.shift().apply(tokens, function(error, value) {
           if (error) {
             f(error);
           } else {
-            logo.trace("? {0} {1}".fmt($scope(), $show(value)));
+            logo.trace("} {0} {1}".fmt($scope(), $show(value)));
             infix_swap(value, tokens, function(error, value) {
                 if (error) {
                   f(error);
@@ -458,21 +461,26 @@ if (typeof exports === "object") populus = require("populus");
   {
     var p = function(tokens, f)
     {
-      var scope = { parent: logo.scope,
-        current_token: logo.scope.current_token,
-        things: Object.create(logo.scope.things),
+      var parent = logo.scope;
+      logo.scope = { parent: parent,
+        current_token: parent.current_token,
+        things: Object.create(parent.things),
+        procedure: true,
         exit: function(error, value) {
-            logo.scope = logo.scope.parent;
+            logo.scope = parent;
             if (error) {
               f(error);
             } else if (definition.is_macro) {
               value.run(f);
             } else {
+              logo.trace("& {0} (exited with value {1})"
+                  .fmt($scope(), value.show()));
               f(error, value);
             }
           } };
-      logo.scope = scope;
       var n = definition.args.length;
+      logo.trace("& {0}, reading {1} argument{2}"
+          .fmt($scope(), n, n > 1 ? "s": ""));
       (function eval_args(i) {
         if (i < n) {
           logo.eval(tokens, function(error, value) {
@@ -480,12 +488,16 @@ if (typeof exports === "object") populus = require("populus");
                 f(error);
               } else {
                 logo.scope.things[definition.args[i].toUpperCase()] = value;
+                logo.trace("& {0} {1}={2}".fmt($scope(),
+                    definition.args[i].toUpperCase(), value.show()));
                 eval_args(i + 1);
               }
             });
         } else {
           delete logo.scope.current_token;
           var tokens_ = definition.tokens.slice(0);
+          logo.trace("& {0} <{1}>".fmt($scope(),
+              tokens_.map(function(x) { return x.show(); }).join(" ")));
           logo.eval_loop(tokens_, function(error, value) {
               if (error) {
                 f(error);
@@ -768,6 +780,34 @@ if (typeof exports === "object") populus = require("populus");
           }
         }, f);
     }
+  }
+
+  // Repeat the list a given number of times, then call the current exit
+  // function. Used by FOREVER (with Infinity) and REPEAT
+  function repeat(list, times)
+  {
+    var parent = logo.scope;
+    logo.scope = Object.create(parent);
+    logo.scope.parent = parent;
+    logo.scope.repcount = 0;
+    logo.scope.exit = function(error, value) {
+      logo.scope = parent;
+      logo.trace("@ {0} exit with value {1}".fmt($scope(), value.show()));
+      logo.scope.exit(error, value);
+    }
+    logo.trace("@ {0} repeat {1} time{2}"
+        .fmt($scope(), times, times > 1 ? "s" : ""));
+    (function repeat_() {
+      if (logo.scope.repcount >= times) {
+        logo.trace("@ {0} repeated {1} time{2}".fmt($scope(),
+            logo.scope.repcount, logo.scope.repcount > 1 ? "s" : ""));
+        logo.scope.exit(undefined, logo.$undefined.new());
+      } else {
+        logo.trace("@ {0} repcount={1}".fmt($scope(), logo.scope.repcount));
+        ++logo.scope.repcount;
+        list.run(repeat_);
+      }
+    })();
   }
 
 
@@ -1107,20 +1147,7 @@ if (typeof exports === "object") populus = require("populus");
     //   inside the instructionlist (such as STOP or THROW) makes it stop.
     FOREVER: function(tokens, f)
     {
-      logo.eval_list(tokens, function(list) {
-          var scope = Object.create(logo.scope);
-          scope.parent = logo.scope;
-          scope.repcount = 0;
-          scope.exit = function(error, value) {
-            logo.scope = logo.scope.parent;
-            logo.scope.exit(error, value);
-          }
-          logo.scope = scope;
-          (function repeat() {
-            ++logo.scope.repcount;
-            list.run(repeat);
-          })();
-        }, f);
+      logo.eval_list(tokens, function(list) { repeat(list, Infinity); }, f);
     },
 
     // FPUT thing list
@@ -1778,21 +1805,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_integer(tokens, function(num) {
           logo.eval_list(tokens, function(list) {
-              var scope = Object.create(logo.scope);
-              scope.parent = logo.scope;
-              scope.repcount = 0;
-              logo.scope = scope;
-              (function repeat() {
-                logo.trace("@ repeat {0}, #{1}"
-                  .fmt(num.show(), logo.scope.repcount));
-                if (logo.scope.repcount >= num.value) {
-                  logo.scope = logo.scope.parent;
-                  f(undefined, logo.$undefined.new());
-                } else {
-                  ++logo.scope.repcount;
-                  list.run(repeat);
-                }
-              })();
+              repeat(list, num.value);
             }, f);
         }, f);
     },
