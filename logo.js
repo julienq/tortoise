@@ -449,7 +449,7 @@ if (typeof exports === "object") populus = require("populus");
             } else {
               f(undefined, true);
             }
-          });
+          }, logo.$undefined.new());
       }
     } catch (error) {
       f(error);
@@ -507,7 +507,7 @@ if (typeof exports === "object") populus = require("populus");
               } else {
                 logo.scope.exit(undefined, value);
               }
-            });
+            }, logo.$undefined.new());
         }
       })(0);
     };
@@ -1929,7 +1929,10 @@ if (typeof exports === "object") populus = require("populus");
     //   command.  Ends the running of the procedure in which it appears.
     //   Control is returned to the context in which that procedure was
     //   invoked.  The stopped procedure does not output a value.
-    STOP: function(tokens, f) { logo.scope.exit(undefined, logo.$undefined.new()); },
+    STOP: function(tokens, f)
+    {
+      logo.scope.exit(undefined, logo.$undefined.new());
+    },
 
     // SUM num1 num2
     // (SUM num1 num2 num3 ...)
