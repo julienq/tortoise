@@ -15,8 +15,7 @@ END
 ;   command.  Makes the named variable local, like LOCAL, and
 ;   assigns it the given value, like MAKE.
 .MACRO LOCALMAKE :varname :value
-  OUTPUT (LIST "LOCAL WORD "" :varname "MAKE WORD "" :varname QUOTED :value)
-  ; OUTPUT (list "local (word "" :name) "apply ""make (list :name :value))
+  OUTPUT (list "local (word "" :varname) "apply ""make (list :varname :value))
 END
 
 ; NAME value varname

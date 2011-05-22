@@ -143,13 +143,10 @@ if (typeof exports === "object") populus = require("populus");
 
       // Create a procedure invocation token with a precedence of 0 (for prefix
       // operators; infix operators can pass a precedence value)
-      // THING is a special case as it must bind more tightly than infix
-      // operators
       init: function(value, surface, precedence)
       {
         this.call_super("init", value, surface);
-        this.precedence = precedence ||
-          (this.value === "THING" || this.value === "?") ? 4 : 0;
+        this.precedence = precedence || 0;
       },
 
       // Apply this procedure: consume the necessary tokens for evaluating the
@@ -425,18 +422,15 @@ if (typeof exports === "object") populus = require("populus");
                     source: input, tokens: [], is_macro: is_macro };
                   delete logo.scope.current_token;
                   f(undefined, false);
-                } else if (tokens.length === 1) {
-                  f(logo.error(logo.ERR_DOESNT_LIKE, $show(tokens[0])));
                 } else {
                   var thing = tokens.shift();
-                  var word = tokens.shift();
-                  if (!thing.is_procedure("THING")) {
-                    f(logo.error(logo.ERR_DOESNT_LIKE, $show(thing)));
-                  } else if (!word.is_word) {
-                    f(logo.error(logo.ERR_DOESNT_LIKE, $show(word)));
-                  } else {
-                    args.push(word.value);
+                  if (thing.is_a(logo.$group) &&
+                    thing.value.length === 2 &&
+                    thing.value[0].is_procedure("THING")) {
+                    args.push(thing.value[1].value);
                     read_var();
+                  } else {
+                    f(logo.error(logo.ERR_DOESNT_LIKE, thing.show()));
                   }
                 }
               })();
@@ -597,12 +591,20 @@ if (typeof exports === "object") populus = require("populus");
           push_token(logo.word(m[0], m[0]));
         } else if (m = input.match(/^\?(\d+)/)) {
           // TODO look for a delimiter
-          push_token(logo.$procedure.new("?"));
-          push_token(logo.word(m[1]));
+          var group = logo.$group.new();
+          var q = logo.$procedure.new("?");
+          q.in_parens = true;
+          group.value.push(q);
+          group.value.push(logo.word(m[1]));
+          push_token(group);
         } else if (m = input.match(/^(:?)([^\s\[\]\(\)+\-*\/=<>;]+)/)) {
           if (m[1] === ":") {
-            push_token(logo.$procedure.new("THING"));
-            push_token(logo.word(m[2], m[0]));
+            var group = logo.$group.new();
+            var thing = logo.$procedure.new("THING");
+            thing.in_parens = true;
+            group.value.push(thing);
+            group.value.push(logo.word(m[2], m[0]));
+            push_token(group);
           } else {
             push_token(logo.$procedure.new(m[0].toUpperCase(), m[0]));
           }
@@ -867,7 +869,7 @@ if (typeof exports === "object") populus = require("populus");
               var parent = logo.scope;
               logo.scope = Object.create(parent);
               logo.scope.parent = parent;
-              logo.scope.slots = [];
+              logo.scope.slots = inputlist.value;
               logo.scope.exit = function(error, value)
               {
                 if (error) {
@@ -878,34 +880,18 @@ if (typeof exports === "object") populus = require("populus");
                 }
               };
               logo.trace("# {0} apply template (inputs)".fmt($scope()));
-              try {
-                var tokens = logo.tokenize(inputlist.toString());
-                (function loop() {
-                  if (tokens.length === 0) {
-                    if (template.is_word) {
-                      var group = logo.$group.new();
-                      var procedure =
-                        logo.$procedure.new(template.value.toUpperCase());
-                      procedure.in_parens = true;
-                      group.value.push(procedure);
-                      logo.scope.slots.forEach(function(slot) {
-                          group.value.push(slot);
-                        });
-                      group.apply(tokens, logo.scope.exit);
-                    } else {
-                      template_.run(logo.scope.exit);
-                    }
-                  } else {
-                    logo.eval_token(tokens, function(value) {
-                        logo.scope.slots.push(value);
-                        logo.trace("# Slot #{0}={1}"
-                          .fmt(logo.scope.slots.length, value.show()));
-                        loop();
-                      }, f);
-                  }
-                })();
-              } catch(e) {
-                f(e);
+              if (template.is_word) {
+                var group = logo.$group.new();
+                var procedure =
+                  logo.$procedure.new(template.value.toUpperCase());
+                procedure.in_parens = true;
+                group.value.push(procedure);
+                logo.scope.slots.forEach(function(slot) {
+                    group.value.push(slot);
+                  });
+                group.apply(tokens, logo.scope.exit);
+              } else {
+                template.run(logo.scope.exit);
               }
             }, f);
         }, f);
