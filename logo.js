@@ -283,6 +283,11 @@ if (typeof exports === "object") populus = require("populus");
           }
         },
       is_list: false,
+      is_thing: { get: function() {
+            return this.value.length === 2 &&
+              this.value[0].is_procedure("THING");
+          } },
+      show: function() { return "(" + this.toString() + ")"; },
     });
 
 
@@ -398,6 +403,8 @@ if (typeof exports === "object") populus = require("populus");
     logo.scope.exit = f;
     try {
       var tokens = logo.tokenize(input);
+      logo.trace("eval_input: [{0}]"
+          .fmt(tokens.map(function(x) { return x.show(); }).join(" ")));
       if (tokens.length > 0 && (tokens[0].is_procedure("TO") ||
           tokens[0].is_procedure(".MACRO"))) {
         if (logo.current_def) {
@@ -416,21 +423,40 @@ if (typeof exports === "object") populus = require("populus");
               f(logo.error(logo.ERR_ALREADY_DEFINED, $show(name)));
             } else {
               // Read args: they are pairs of THING followed by a word
+              var required_ok = true;  // can read required inputs (THING "x)
+              var optional_ok = true;  // can read optional inputs [:x "y]
+              //var rest_ok = true;      // can read rest input [:x]
+              //var default_ok = true;   // can read default number x
+              var default_args = 0;    // number of default arguments
               (function read_var() {
                 if (tokens.length === 0) {
                   logo.current_def = { to: to, name: name.value, args: args,
-                    source: input, tokens: [], is_macro: is_macro };
+                    source: input, tokens: [], is_macro: is_macro,
+                    default_args: default_args };
                   delete logo.scope.current_token;
                   f(undefined, false);
                 } else {
-                  var thing = tokens.shift();
-                  if (thing.is_a(logo.$group) &&
-                    thing.value.length === 2 &&
-                    thing.value[0].is_procedure("THING")) {
-                    args.push(thing.value[1].value);
+                  var input = tokens.shift();
+                  if (required_ok && input.is_thing) {
+                    // Read a required input
+                    args.push(input.value[1].value);
+                    ++default_args;
                     read_var();
+                  } else if (optional_ok && input.is_list &&
+                    input.value.length > 1) {
+                    var m = input.value[0].value
+                      .match(/^:((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/);
+                    if (m) {
+                      // Read an optional input
+                      input.value.shift();
+                      args.push([m[1].replace(/\\(.)/g, "$1"), input]);
+                      required_ok = false;
+                      read_var();
+                    } else {
+                      f(logo.error(logo.ERR_DOESNT_LIKE, input.show()));
+                    }
                   } else {
-                    f(logo.error(logo.ERR_DOESNT_LIKE, thing.show()));
+                    f(logo.error(logo.ERR_DOESNT_LIKE, input.show()));
                   }
                 }
               })();
@@ -463,6 +489,7 @@ if (typeof exports === "object") populus = require("populus");
       logo.scope = { parent: parent,
         current_token: parent.current_token,
         things: Object.create(parent.things),
+        in_parens: parent.in_parens,
         procedure: true,
         exit: function(error, value) {
             logo.scope = parent;
@@ -476,21 +503,39 @@ if (typeof exports === "object") populus = require("populus");
               f(error, value);
             }
           } };
-      var n = definition.args.length;
+      var n = definition.default_args;
+      var m = definition.args.length;
       logo.trace("& {0}, reading {1} argument{2}"
           .fmt($scope(), n, n > 1 ? "s": ""));
       (function eval_args(i) {
-        if (i < n) {
-          logo.eval(tokens, function(error, value) {
-              if (error) {
-                f(error);
-              } else {
-                logo.scope.things[definition.args[i].toUpperCase()] = value;
-                logo.trace("& {0} {1}={2}".fmt($scope(),
-                    definition.args[i].toUpperCase(), value.show()));
-                eval_args(i + 1);
-              }
-            });
+        if (i < m) {
+          var arg_name = (definition.args[i] instanceof Array ?
+            definition.args[i][0] : definition.args[i]).toUpperCase();
+          var default_expr = definition.args[i] instanceof Array ?
+            definition.args[i][1] : null;
+          function g(error, value)
+          {
+            if (error) {
+              f(error);
+            } else {
+              logo.scope.things[arg_name] = value;
+              logo.trace("& {0} {1}={2}".fmt($scope(), arg_name, value.show()));
+              eval_args(i + 1);
+            }
+          };
+          if (i < n) {
+            if (tokens.length > 0 || !default_expr) {
+              logo.eval(tokens, g);
+            } else {
+              default_expr.run(g);
+            }
+          } else {
+            if (logo.scope.in_parens && tokens.length > 0) {
+              logo.eval(tokens, g);
+            } else {
+              default_expr.run(g);
+            }
+          }
         } else {
           delete logo.scope.current_token;
           var tokens_ = definition.tokens.slice(0);
