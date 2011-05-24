@@ -422,17 +422,19 @@ if (typeof exports === "object") populus = require("populus");
             } else if (name in logo.procedures) {
               f(logo.error(logo.ERR_ALREADY_DEFINED, $show(name)));
             } else {
-              // Read args: they are pairs of THING followed by a word
               var required_ok = true;  // can read required inputs (THING "x)
               var optional_ok = true;  // can read optional inputs [:x "y]
-              //var rest_ok = true;      // can read rest input [:x]
-              //var default_ok = true;   // can read default number x
-              var default_args = 0;    // number of default arguments
+              var rest_ok = true;      // can read rest input [:x]
+              var default_ok = true;   // can read default number n
+              var min_args = 0;        // min number of arguments (i.e. req'd)
+              var max_args = 0;        // max number of arguments (maybe ∞)
+              var default_args = 0;    // default number of arguments
               (function read_var() {
                 if (tokens.length === 0) {
                   logo.current_def = { to: to, name: name.value, args: args,
                     source: input, tokens: [], is_macro: is_macro,
-                    default_args: default_args };
+                    min_args: min_args, max_args: max_args || min_args,
+                    default_args: default_args || min_args };
                   delete logo.scope.current_token;
                   f(undefined, false);
                 } else {
@@ -440,7 +442,7 @@ if (typeof exports === "object") populus = require("populus");
                   if (required_ok && input.is_thing) {
                     // Read a required input
                     args.push(input.value[1].value);
-                    ++default_args;
+                    ++min_args;
                     read_var();
                   } else if (optional_ok && input.is_list &&
                     input.value.length > 1) {
@@ -455,6 +457,28 @@ if (typeof exports === "object") populus = require("populus");
                     } else {
                       f(logo.error(logo.ERR_DOESNT_LIKE, input.show()));
                     }
+                  } else if (rest_ok && input.is_list &&
+                      input.value.length === 1) {
+                    var m = input.value[0].value
+                      .match(/^:((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/);
+                    if (m) {
+                      // Read a rest input
+                      args.push([m[1].replace(/\\(.)/g, "$1")]);
+                      max_args = Infinity;
+                      required_ok = false;
+                      optional_ok = false;
+                      rest_ok = false;
+                      read_var();
+                    } else {
+                      f(logo.error(logo.ERR_DOESNT_LIKE, input.show()));
+                    }
+                  } else if (default_ok && input.is_integer) {
+                    // Read a default number of arguments
+                    required_ok = false;
+                    optional_ok = false;
+                    rest_ok = false;
+                    default_ok = false;
+                    default_args = input.value;
                   } else {
                     f(logo.error(logo.ERR_DOESNT_LIKE, input.show()));
                   }
@@ -503,16 +527,25 @@ if (typeof exports === "object") populus = require("populus");
               f(error, value);
             }
           } };
-      var n = definition.default_args;
-      var m = definition.args.length;
-      logo.trace("& {0}, reading {1} argument{2}"
-          .fmt($scope(), n, n > 1 ? "s": ""));
+      // In parens read between min and max args, otherwise the default number
+      // of arguments
+      var min = logo.scope.in_parens ? definition.min_args :
+        definition.default_args;
+      var max = logo.scope.in_parens ? definition.max_args :
+        definition.default_args;
+      var n = definition.args.length;
+      logo.trace("& {0}, reading {1}-{2} argument{3}/{4}"
+          .fmt($scope(), min, max, max > 1 ? "s" : "", n));
       (function eval_args(i) {
-        if (i < m) {
+        if (i < n) {
+          // We still need to fill some argument slots
           var arg_name = (definition.args[i] instanceof Array ?
             definition.args[i][0] : definition.args[i]).toUpperCase();
           var default_expr = definition.args[i] instanceof Array ?
             definition.args[i][1] : null;
+          var rest = definition.args[i] instanceof Array && !default_expr;
+          logo.trace("& {0} Getting arg #{1}: {2} ({3})".fmt($scope(), i,
+              arg_name, rest));
           function g(error, value)
           {
             if (error) {
@@ -523,18 +556,17 @@ if (typeof exports === "object") populus = require("populus");
               eval_args(i + 1);
             }
           };
-          if (i < n) {
-            if (tokens.length > 0 || !default_expr) {
-              logo.eval(tokens, g);
-            } else {
-              default_expr.run(g);
-            }
+          if (!rest && (i < min || (i < max && tokens.length > 0))) {
+            logo.eval(tokens, g);
+          } else if (default_expr) {
+            default_expr.run(g);
           } else {
-            if (logo.scope.in_parens && tokens.length > 0) {
-              logo.eval(tokens, g);
-            } else {
-              default_expr.run(g);
-            }
+            var rest = logo.$list.new();
+            rest.value = tokens.slice(0);
+            logo.scope.things[arg_name] = rest;
+            logo.trace("& {0} rest: {1}={2}"
+                .fmt($scope(), arg_name, rest.show()));
+            eval_args(n);
           }
         } else {
           delete logo.scope.current_token;
