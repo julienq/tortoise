@@ -479,6 +479,7 @@ if (typeof exports === "object") populus = require("populus");
                     rest_ok = false;
                     default_ok = false;
                     default_args = input.value;
+                    read_var();
                   } else {
                     f(logo.error(logo.ERR_DOESNT_LIKE, input.show()));
                   }
