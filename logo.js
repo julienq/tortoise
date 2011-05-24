@@ -528,45 +528,57 @@ if (typeof exports === "object") populus = require("populus");
             }
           } };
       // In parens read between min and max args, otherwise the default number
-      // of arguments
+      // of arguments. If we haven't read all arguments instantiate the ones
+      // that have not been read with the default expressions.
       var min = logo.scope.in_parens ? definition.min_args :
         definition.default_args;
       var max = logo.scope.in_parens ? definition.max_args :
         definition.default_args;
       var n = definition.args.length;
-      logo.trace("& {0}, reading {1}-{2} argument{3}/{4}"
+      var m = Math.max(max, n);
+      if (definition.max_args === Infinity) {
+        var arg_name = definition.args[n - 1][0].toUpperCase();
+        logo.scope.things[definition.args[n - 1][0].toUpperCase()] =
+          logo.$list.new();
+        logo.trace("& rest list {1}={2}".fmt($scope(), arg_name,
+            logo.scope.things[arg_name].show()));
+      }
+      logo.trace("& reading {1}-{2} argument{3}/{4}"
           .fmt($scope(), min, max, max > 1 ? "s" : "", n));
       (function eval_args(i) {
-        if (i < n) {
-          // We still need to fill some argument slots
-          var arg_name = (definition.args[i] instanceof Array ?
-            definition.args[i][0] : definition.args[i]).toUpperCase();
-          var default_expr = definition.args[i] instanceof Array ?
-            definition.args[i][1] : null;
-          var rest = definition.args[i] instanceof Array && !default_expr;
-          logo.trace("& {0} Getting arg #{1}: {2} ({3})".fmt($scope(), i,
-              arg_name, rest));
-          function g(error, value)
+        if (i < m) {
+          var j = Math.min(i, n - 1);
+          var arg_name = (definition.args[j] instanceof Array ?
+            definition.args[j][0] : definition.args[j]).toUpperCase();
+          var default_expr = definition.args[j] instanceof Array ?
+            definition.args[j][1] : null;
+          var rest = definition.args[j] instanceof Array && !default_expr;
+          logo.trace("& Getting arg #{1}/{2}: {3} ({4})".fmt($scope(), i,
+              j, arg_name, rest ? "regular" : "rest"));
+          var g = function(error, value)
           {
             if (error) {
               f(error);
             } else {
-              logo.scope.things[arg_name] = value;
-              logo.trace("& {0} {1}={2}".fmt($scope(), arg_name, value.show()));
+              if (rest) {
+                logo.scope.things[arg_name].value.push(value);
+              } else {
+                logo.scope.things[arg_name] = value;
+              }
+              logo.trace("& {1}={2}".fmt($scope(), arg_name,
+                    logo.scope.things[arg_name].show()));
               eval_args(i + 1);
             }
           };
-          if (!rest && (i < min || (i < max && tokens.length > 0))) {
+          if (i < min || (i < max && tokens.length > 0)) {
+            logo.trace("& normal arg");
             logo.eval(tokens, g);
           } else if (default_expr) {
+            logo.trace("& default arg");
             default_expr.run(g);
           } else {
-            var rest = logo.$list.new();
-            rest.value = tokens.slice(0);
-            logo.scope.things[arg_name] = rest;
-            logo.trace("& {0} rest: {1}={2}"
-                .fmt($scope(), arg_name, rest.show()));
-            eval_args(n);
+            logo.trace("& nothing left");
+            eval_args(m);
           }
         } else {
           delete logo.scope.current_token;
