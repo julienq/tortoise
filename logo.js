@@ -1047,6 +1047,38 @@ if (typeof exports === "object") populus = require("populus");
       logo.eval_token(tokens, function(v) { f(undefined, v.butfirst()); }, f);
     },
 
+    // BUTFIRSTS list
+    // BFS list
+    //   outputs a list containing the BUTFIRST of each member of the input
+    //   list.  It is an error if any member of the input list is empty or an
+    //   array.  (The input itself may be empty, in which case the output is
+    //   also empty.)  This could be written as
+		//     to butfirsts :list
+    //     output map "butfirst :list
+    //     end
+	  //   but is provided as a primitive in order to speed up the iteration
+    //   tools MAP, MAP.SE, and FOREACH.
+    BUTFIRSTS: function(tokens, f)
+    {
+      var bfs = logo.$list.new();
+      logo.eval_list(tokens, function(list) {
+          var error;
+          for (var i = 0, n = list.value.length, error; i < n && !error; ++i) {
+            var v = list.value[i];
+            if (typeof v.count !== "number" || v.count === 0) {
+              error = logo.error(logo.ERR_DOESNT_LIKE, $show(v));
+            } else {
+              bfs.value.push(v.butfirst());
+            }
+          }
+          if (error) {
+            f(error);
+          } else {
+            f(undefined, bfs);
+          }
+        }, f);
+    },
+
     // BUTLAST wordorlist
     // BL wordorlist
     //   if the input is a word, outputs a word containing all but the last
