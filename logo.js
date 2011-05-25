@@ -13,7 +13,7 @@ if (typeof exports === "object") populus = require("populus");
   logo.trace = function() {};
 
   // Global Mersenne Twister used by RANDOM/RERANDOM
-  var MERSENNE_TWISTER = populus.$mersenne_twister.new();
+  var MERSENNE_TWISTER = populus.mersenne_twister.new();
 
   // (Re)set the seed for the randomizer
   logo.set_seed = function(seed) { MERSENNE_TWISTER.set_seed(seed); };
@@ -40,7 +40,7 @@ if (typeof exports === "object") populus = require("populus");
   // procedure or swapped with the following infix operator if any
   function infix_swap(value, tokens, f)
   {
-    if (value.is_datum && tokens.length > 0 && tokens[0].is_a(logo.$infix) &&
+    if (value.is_datum && tokens.length > 0 && tokens[0].is_a(logo.infix) &&
         tokens[0].precedence > (logo.scope.precedence || 0)) {
       logo.trace("% swap {0} {1}".fmt(value.show(), tokens[0].show()));
       value.swapped = true;
@@ -51,7 +51,7 @@ if (typeof exports === "object") populus = require("populus");
   }
 
   // An undefined word (and the base for the hierarchy of tokens)
-  logo.$undefined = populus.$object.create({
+  logo.undefined = populus.object.create({
 
       apply: function(tokens, f)
       {
@@ -67,20 +67,22 @@ if (typeof exports === "object") populus = require("populus");
       item: function(i) { return this; },
       lput: function() { return this; },
       run: function(f) { f(logo.error(logo.ERR_DOESNT_LIKE, this.show())); },
-      show: function(surface) { return "$undefined"; },
+      show: function(surface) { return "*undefined*"; },
       toString: function() { return "*undefined*"; }
     });
 
 
   // A Logo word
-  logo.$word = logo.$undefined.create({
+  logo.word = logo.undefined.create({
       init: function(value, surface) {
-          this.value = value;
-          if (surface) this.surface = surface;
+          var self = this.call_super("init");
+          self.value = value;
+          if (surface) self.surface = surface;
+          return self;
         },
-      butfirst: function() { return logo.word(this.toString().substr(1)); },
+      butfirst: function() { return logo.new_word(this.toString().substr(1)); },
       butlast: function() {
-          return logo.word(this.toString()
+          return logo.new_word(this.toString()
             .substr(0, this.toString().length - 1));
         },
       contains: function(thing) {
@@ -92,7 +94,7 @@ if (typeof exports === "object") populus = require("populus");
       equalp: function(t) { return this.is_word && this.value === t.value; },
       fput: function(thing) {
           if (thing.is_word && thing.toString().length === 1) {
-            return logo.word(thing.toString() + this.toString());
+            return logo.new_word(thing.toString() + this.toString());
           } else {
             throw logo.error(logo.ERR_DOESNT_LIKE, $show(thing));
           }
@@ -101,11 +103,11 @@ if (typeof exports === "object") populus = require("populus");
       is_defined: true,
       is_word: true,
       item: function(i) {
-          return logo.word(this.toString().substr(i - 1, 1));
+          return logo.new_word(this.toString().substr(i - 1, 1));
         },
       lput: function(thing) {
           if (thing.is_word && thing.value.length === 1) {
-            return logo.word(this.toString() + thing.toString());
+            return logo.new_word(this.toString() + thing.toString());
           } else {
             throw logo.error(logo.ERR_DOESNT_LIKE, $show(thing));
           }
@@ -118,35 +120,36 @@ if (typeof exports === "object") populus = require("populus");
 
 
   // A number (a float), can be specialized as an integer
-  logo.$number = logo.$word.create({
+  logo.number = logo.word.create({
       equalp: function(t) { return t.is_number && this.value === t.value; },
       is_number: true,
     });
 
 
   // An integer (although of course its value is still a float...)
-  logo.$integer = logo.$number.create({
+  logo.integer = logo.number.create({
       equalp: function(t) { return t.is_integer && this.value === t.value; },
       is_integer: true,
     });
 
 
   // A boolean (TRUE or FALSE)
-  logo.$boolean = logo.$word.create({
+  logo.boolean = logo.word.create({
       is_false: { enumerable: true, get: function() { return !this.value; } },
       is_true: { enumerable: true, get: function() { return this.value; } },
     });
 
 
   // A procedure invocation token
-  logo.$procedure = logo.$word.create({
+  logo.procedure = logo.word.create({
 
       // Create a procedure invocation token with a precedence of 0 (for prefix
       // operators; infix operators can pass a precedence value)
       init: function(value, surface, precedence)
       {
-        this.call_super("init", value, surface);
-        this.precedence = precedence || 0;
+        var self = this.call_super("init", value, surface);
+        self.precedence = precedence || 0;
+        return self;
       },
 
       // Apply this procedure: consume the necessary tokens for evaluating the
@@ -178,19 +181,23 @@ if (typeof exports === "object") populus = require("populus");
     });
 
   // An infix procedure invocation token (e.g. +, -, etc.)
-  logo.$infix = logo.$procedure.create();
+  logo.infix = logo.procedure.create();
 
 
   // The list token has an array of tokens for values
-  logo.$list = logo.$word.create({
-      init: function() { this.value = []; },
+  logo.list = logo.word.create({
+      init: function() {
+          var self = this.call_super("init");
+          self.value = [];
+          return self;
+        },
       butfirst: function() {
-          var list = logo.$list.new();
+          var list = logo.list.new();
           list.value = this.value.slice(1);
           return list;
         },
       butlast: function() {
-          var list = logo.$list.new();
+          var list = logo.list.new();
           list.value = this.value.slice(0, this.value.length - 1);
           return list;
         },
@@ -216,7 +223,7 @@ if (typeof exports === "object") populus = require("populus");
           })(this, token);
         },
       fput: function(t) {
-          var list = logo.$list.new();
+          var list = logo.list.new();
           list.value = this.value.slice(0);
           list.value.unshift(t);
           return list;
@@ -225,7 +232,7 @@ if (typeof exports === "object") populus = require("populus");
       is_word: false,
       item: function(i) { return this.value[i - 1]; },
       lput: function(t) {
-          var list = logo.$list.new();
+          var list = logo.list.new();
           list.value = this.value.slice(0);
           list.value.push(t);
           return list;
@@ -241,7 +248,7 @@ if (typeof exports === "object") populus = require("populus");
               } else {
                 logo.eval_token(tokens, loop, f);
               }
-            })(logo.$undefined.new());
+            })(logo.undefined.new());
           } catch(e) {
             f(e);
           }
@@ -258,7 +265,7 @@ if (typeof exports === "object") populus = require("populus");
 
 
   // A group is a meta token that contains a parenthesized group
-  logo.$group = logo.$list.create({
+  logo.group = logo.list.create({
       apply: function(tokens, f) {
           var tokens_ = this.value.slice(0);
           if (tokens_.length > 0) {
@@ -287,7 +294,7 @@ if (typeof exports === "object") populus = require("populus");
             return this.value.length === 2 &&
               this.value[0].is_procedure("THING");
           } },
-      show: function() { return "(" + this.toString() + ")"; },
+      show: function() { return "(" + this.call_super("show") + ")"; },
     });
 
 
@@ -417,7 +424,7 @@ if (typeof exports === "object") populus = require("populus");
           if (tokens.length > 0) {
             // Read the name of the procedure
             var name = tokens.shift();
-            if (!name.is_a(logo.$procedure)) {
+            if (!name.is_a(logo.procedure)) {
               f(logo.error(logo.ERR_DOESNT_LIKE, $show(name)));
             } else if (name in logo.procedures) {
               f(logo.error(logo.ERR_ALREADY_DEFINED, $show(name)));
@@ -498,7 +505,7 @@ if (typeof exports === "object") populus = require("populus");
             } else {
               f(undefined, true);
             }
-          }, logo.$undefined.new());
+          }, logo.undefined.new());
       }
     } catch (error) {
       f(error);
@@ -540,7 +547,7 @@ if (typeof exports === "object") populus = require("populus");
       if (definition.max_args === Infinity) {
         var arg_name = definition.args[n - 1][0].toUpperCase();
         logo.scope.things[definition.args[n - 1][0].toUpperCase()] =
-          logo.$list.new();
+          logo.list.new();
         logo.trace("& rest list {1}={2}".fmt($scope(), arg_name,
             logo.scope.things[arg_name].show()));
       }
@@ -595,7 +602,7 @@ if (typeof exports === "object") populus = require("populus");
               } else {
                 logo.scope.exit(undefined, value);
               }
-            }, logo.$undefined.new());
+            }, logo.undefined.new());
         }
       })(0);
     };
@@ -649,7 +656,7 @@ if (typeof exports === "object") populus = require("populus");
     while (input.length > 0) {
       input = input.replace(/^\s+/, "");
       if (m = input.match(/^\[/)) {
-        var l = logo.$list.new();
+        var l = logo.list.new();
         l.parent = current_list;
         push_token(l);
         current_list = l;
@@ -661,9 +668,9 @@ if (typeof exports === "object") populus = require("populus");
         }
       } else if (current_list) {
         m = input.match(/^([^\s\[\]\\]|(\\.))+/);
-        push_token(logo.word(m[0].replace(/\\(.)/g, "$1", m[0])));
+        push_token(logo.new_word(m[0].replace(/\\(.)/g, "$1", m[0])));
       } else if (m = input.match(/^\(/)) {
-        var g = logo.$group.new();
+        var g = logo.group.new();
         g.parent = current_group;
         push_token(g);
         current_group = g;
@@ -675,68 +682,74 @@ if (typeof exports === "object") populus = require("populus");
         }
       } else {
         if (m = input.match(/^"((?:[^\s\[\]\(\);\\]|(?:\\.))*)/)) {
-          push_token(logo.word(m[1].replace(/\\(.)/g, "$1"), m[0]));
+          push_token(logo.new_word(m[1].replace(/\\(.)/g, "$1"), m[0]));
         } else if (m = input
             .match(/^((\d+(\.\d*)?)|(\d*\.\d+))(?=[\s\[\]\(\)+\-*\/=<>;]|$)/)) {
-          push_token(logo.word(m[0], m[0]));
+          push_token(logo.new_word(m[0], m[0]));
         } else if (m = input.match(/^\?(\d+)(?=[\s\[\]\(\)+\-*\/=<>;]|$)/)) {
-          var group = logo.$group.new();
-          var q = logo.$procedure.new("?");
+          var group = logo.group.new();
+          var q = logo.procedure.new("?");
           q.in_parens = true;
           group.value.push(q);
-          group.value.push(logo.word(m[1]));
+          group.value.push(logo.new_word(m[1]));
           push_token(group);
         } else if (m = input
             .match(/^(:?)((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/)) {
           if (m[1] === ":") {
-            var group = logo.$group.new();
-            var thing = logo.$procedure.new("THING");
+            var group = logo.group.new();
+            var thing = logo.procedure.new("THING");
             thing.in_parens = true;
             group.value.push(thing);
-            group.value.push(logo.word(m[2].replace(/\\(.)/g, "$1"), m[0]));
+            group.value.push(logo.new_word(m[2].replace(/\\(.)/g, "$1"), m[0]));
+            logo.trace("THING: {{0}}".fmt(group.show()));
             push_token(group);
           } else {
-            push_token(logo.$procedure
+            push_token(logo.procedure
                 .new(m[0].replace(/\\(.)/g, "$1").toUpperCase(), m[0]));
           }
         } else if (m = input.match(/^(<=|>=|<>|=|<|>)/)) {
-          push_token(logo.$infix.new(m[0], m[0], 1));
+          push_token(logo.infix.new(m[0], m[0], 1));
         } else if (m = input.match(/^(\+|\-)/)) {
-          push_token(logo.$infix.new(m[0], m[0], 2));
+          push_token(logo.infix.new(m[0], m[0], 2));
         } else if (m = input.match(/^(\*|\/)/)) {
-          push_token(logo.$infix.new(m[0], m[0], 3));
+          push_token(logo.infix.new(m[0], m[0], 3));
         } else if (m = input.match(/./)) {
-          push_token(logo.word(m[0]));
+          push_token(logo.new_word(m[0]));
         }
       }
       if (m) input = input.substring(m[0].length);
     }
+    logo.trace(", tokens: [{0}]".fmt(tokens.map($show).join(" ")));
     return tokens;
   };
 
   // Create a word token of the correct type given the value (i.e. a word, a
   // number, an integer or a boolean.)
-  logo.word = function(value, surface)
+  logo.new_word = function(value, surface)
   {
-    var proto = logo.$word;
+    logo.trace("+ new word: value={{0}}, surface={{1}}".fmt(value, surface));
+    var proto = logo.word;
     if (typeof value === "number") {
       proto = value === parseInt(value.toString(), 10) ?
-        logo.$integer : logo.$number;
+        logo.integer : logo.number;
     } else if (/^[+-]?((\d+(\.\d*)?)|(\d*\.\d+))$/.test(value)) {
       var v = parseFloat(value);
-      proto = isNaN(v) ? logo.$token :
-        v === parseInt(value, 10) ? logo.$integer : logo.$number;
+      proto = isNaN(v) ? logo.token :
+        v === parseInt(value, 10) ? logo.integer : logo.number;
       value = isNaN(v) ? value : v;
     } else if (typeof value === "boolean") {
-      proto = logo.$boolean;
+      proto = logo.boolean;
     } else if (/^true$/i.test(value)) {
-      proto = logo.$boolean;
+      proto = logo.boolean;
       value = true;
     } else if (/^false$/i.test(value)) {
-      proto = logo.$boolean;
+      proto = logo.boolean;
       value = false;
     }
-    return proto.new(value, surface);
+    // return proto.new(value, surface);
+    var w = proto.new(value, surface);
+    logo.trace("= new word: {{0}}".fmt(w.show()));
+    return w;
   };
 
 
@@ -876,7 +889,7 @@ if (typeof exports === "object") populus = require("populus");
     } else {
       logo.eval_token(tokens, function(list) {
           if (logo.scope.test !== p) {
-            f(undefined, logo.$undefined.new());
+            f(undefined, logo.undefined.new());
           } else {
             list.run(f);
           }
@@ -903,7 +916,7 @@ if (typeof exports === "object") populus = require("populus");
       if (logo.scope.repcount >= times) {
         logo.trace("@ {0} repeated {1} time{2}".fmt($scope(),
             logo.scope.repcount, logo.scope.repcount > 1 ? "s" : ""));
-        logo.scope.exit(undefined, logo.$undefined.new());
+        logo.scope.exit(undefined, logo.undefined.new());
       } else {
         logo.trace("@ {0} repcount={1}".fmt($scope(), logo.scope.repcount));
         ++logo.scope.repcount;
@@ -944,7 +957,7 @@ if (typeof exports === "object") populus = require("populus");
           } else {
             g(undefined, value);
           }
-        }, f, 2, logo.$undefined.new());
+        }, f, 2, logo.undefined.new());
     },
 
     // APPLY template inputlist
@@ -973,9 +986,9 @@ if (typeof exports === "object") populus = require("populus");
               logo.trace("# {0} apply template (inputs)".fmt($scope()));
               if (template.is_word) {
                 // Second form: apply "function-name [arguments]
-                var group = logo.$group.new();
+                var group = logo.group.new();
                 var procedure =
-                  logo.$procedure.new(template.value.toUpperCase());
+                  logo.procedure.new(template.value.toUpperCase());
                 procedure.in_parens = true;
                 group.value.push(procedure);
                 logo.scope.slots.forEach(function(slot) {
@@ -1023,16 +1036,16 @@ if (typeof exports === "object") populus = require("populus");
         logo.eval_number(tokens, function(x) {
             logo.eval_number(tokens, function(y) {
                 if (x.value === 0) {
-                  f(undefined, logo.word(populus.sign(y.value) * 90));
+                  f(undefined, logo.new_word(populus.sign(y.value) * 90));
                 } else {
-                  f(undefined,
-                    logo.word(populus.degrees(Math.atan(y.value / x.value))));
+                  f(undefined, logo
+                    .new_word(populus.degrees(Math.atan(y.value / x.value))));
                 }
               }, f);
           }, f);
       } else {
         logo.eval_number(tokens, function(num) {
-            f(undefined, logo.word(populus.degrees(Math.atan(num.value))));
+            f(undefined, logo.new_word(populus.degrees(Math.atan(num.value))));
           }, f);
       }
     },
@@ -1060,7 +1073,7 @@ if (typeof exports === "object") populus = require("populus");
     //   tools MAP, MAP.SE, and FOREACH.
     BUTFIRSTS: function(tokens, f)
     {
-      var bfs = logo.$list.new();
+      var bfs = logo.list.new();
       logo.eval_list(tokens, function(list) {
           var error;
           for (var i = 0, n = list.value.length, error; i < n && !error; ++i) {
@@ -1096,16 +1109,18 @@ if (typeof exports === "object") populus = require("populus");
     //   the workspace.
     CONTENTS: function(tokens, f)
     {
-      var contents = logo.$list.new();
-      var procedures = logo.$list.new();
+      var contents = logo.list.new();
+      var procedures = logo.list.new();
       for (var p in logo.procedures) {
-        if (!logo.procedures[p].primitive) procedures.value.push(logo.word(p));
+        if (!logo.procedures[p].primitive) {
+          procedures.value.push(logo.new_word(p));
+        }
       }
       contents.value.push(procedures);
-      var variables = logo.$list.new();
-      for (var t in logo.scope.things) variables.value.push(logo.word(t));
+      var variables = logo.list.new();
+      for (var t in logo.scope.things) variables.value.push(logo.new_word(t));
       contents.value.push(variables);
-      var plists = logo.$list.new();
+      var plists = logo.list.new();
       contents.value.push(plists);
       f(undefined, contents);
     },
@@ -1132,7 +1147,7 @@ if (typeof exports === "object") populus = require("populus");
                   f(logo.error(logo.ERR_HOW_TO_FATAL, $show(oldname)));
                 } else {
                   logo.procedures[n] = p;
-                  f(undefined, logo.$undefined.new());
+                  f(undefined, logo.undefined.new());
                 }
               }, f);
           }
@@ -1144,7 +1159,7 @@ if (typeof exports === "object") populus = require("populus");
     COS: function(tokens, f)
     {
       logo.eval_number(tokens, function(degrees) {
-          f(undefined, logo.word(Math.cos(populus.radians(degrees.value))));
+          f(undefined, logo.new_word(Math.cos(populus.radians(degrees.value))));
         }, f);
     },
 
@@ -1157,7 +1172,7 @@ if (typeof exports === "object") populus = require("populus");
     COUNT: function(tokens, f)
     {
       logo.eval_token(tokens, function(v) {
-          f(undefined, logo.word(v.count));
+          f(undefined, logo.new_word(v.count));
         }, f);
     },
 
@@ -1171,7 +1186,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_number(tokens, function(num1) {
           logo.eval_number(tokens, function(num2) {
-              f(undefined, logo.word(num1.value - num2.value));
+              f(undefined, logo.new_word(num1.value - num2.value));
             }, f);
         }, f);
     },
@@ -1183,10 +1198,10 @@ if (typeof exports === "object") populus = require("populus");
       logo.eval_number(tokens, function(num1) {
           if (num1.swapped) {
             logo.eval_number(tokens, function(num2) {
-                f(undefined, logo.word(num1.value - num2.value));
+                f(undefined, logo.new_word(num1.value - num2.value));
               }, f);
           } else {
-            f(undefined, logo.word(-num1.value));
+            f(undefined, logo.new_word(-num1.value));
           }
         }, f);
     },
@@ -1198,7 +1213,7 @@ if (typeof exports === "object") populus = require("populus");
     EMPTYP: function(tokens, f)
     {
       logo.eval_token(tokens, function(thing) {
-          f(undefined, logo.word(thing.count === 0))
+          f(undefined, logo.new_word(thing.count === 0))
         }, f);
     },
 
@@ -1221,7 +1236,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_token(tokens, function(thing1) {
           logo.eval_token(tokens, function(thing2) {
-              f(undefined, logo.word(thing1.equalp(thing2)));
+              f(undefined, logo.new_word(thing1.equalp(thing2)));
             }, f);
         }, f);
     },
@@ -1251,7 +1266,7 @@ if (typeof exports === "object") populus = require("populus");
       {
         (function erase() {
           if (procedures.count === 0) {
-            f(undefined, logo.$undefined.new());
+            f(undefined, logo.undefined.new());
           } else {
             var p = procedures.value.shift();
             if (!p.is_word) {
@@ -1272,7 +1287,7 @@ if (typeof exports === "object") populus = require("populus");
       };
       logo.eval_token(tokens, function(contentslist) {
           if (contentslist.is_word) {
-            var list = logo.$list.new();
+            var list = logo.list.new();
             list.value.push(contentslist);
             erase_procedures(list);
           } else if (contentslist.is_list &&
@@ -1293,7 +1308,7 @@ if (typeof exports === "object") populus = require("populus");
     EXP: function(num)
     {
       logo.eval_number(tokens, function(num) {
-          f(undefined, logo.word(Math.exp(num.value)));
+          f(undefined, logo.new_word(Math.exp(num.value)));
         }, f);
     },
 
@@ -1326,7 +1341,7 @@ if (typeof exports === "object") populus = require("populus");
     //     end
     FIRSTS: function(tokens, f)
     {
-      var firsts = logo.$list.new();
+      var firsts = logo.list.new();
       logo.eval_list(tokens, function(list) {
           var error;
           for (var i = 0, n = list.value.length, error; i < n && !error; ++i) {
@@ -1375,7 +1390,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_number(tokens, function(num1) {
           logo.eval_number(tokens, function(num2) {
-              f(undefined, logo.word(num1.value >= num2.value));
+              f(undefined, logo.new_word(num1.value >= num2.value));
             }, f);
         }, f);
     },
@@ -1388,7 +1403,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_number(tokens, function(num1) {
           logo.eval_number(tokens, function(num2) {
-              f(undefined, logo.word(num1.value > num2.value));
+              f(undefined, logo.new_word(num1.value > num2.value));
             }, f);
         }, f);
     },
@@ -1427,7 +1442,7 @@ if (typeof exports === "object") populus = require("populus");
               } else if (tf.is_true) {
                 list_then.run(f);
               } else {
-                f(undefined, logo.$undefined.new());
+                f(undefined, logo.undefined.new());
               }
             }, f);
         }, f);
@@ -1475,7 +1490,7 @@ if (typeof exports === "object") populus = require("populus");
     INT: function(tokens, f)
     {
       logo.eval_number(tokens, function(num) {
-          f(undefined, logo.word(Math.floor(num.value)));
+          f(undefined, logo.new_word(Math.floor(num.value)));
         }, f);
     },
 
@@ -1513,7 +1528,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_number(tokens, function(num1) {
           logo.eval_number(tokens, function(num2) {
-              f(undefined, logo.word(num1.value <= num2.value));
+              f(undefined, logo.new_word(num1.value <= num2.value));
             }, f);
         }, f);
     },
@@ -1526,7 +1541,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_number(tokens, function(num1) {
           logo.eval_number(tokens, function(num2) {
-              f(undefined, logo.word(num1.value < num2.value));
+              f(undefined, logo.new_word(num1.value < num2.value));
             }, f);
         }, f);
     },
@@ -1540,7 +1555,7 @@ if (typeof exports === "object") populus = require("populus");
       logo.eval_slurp(tokens, function(v, list, g) {
           list.value.push(v);
           g(undefined, list);
-        }, f, 2, logo.$list.new());
+        }, f, 2, logo.list.new());
     },
 
     // LISTP thing
@@ -1549,7 +1564,7 @@ if (typeof exports === "object") populus = require("populus");
     LISTP: function(tokens, f)
     {
       logo.eval_token(tokens, function(thing) {
-          f(undefined, logo.word(thing.is_list));
+          f(undefined, logo.new_word(thing.is_list));
         }, f);
     },
 
@@ -1588,7 +1603,7 @@ if (typeof exports === "object") populus = require("populus");
       }
       (function local() {
         if (varnames.length === 0) {
-          f(undefined, logo.$undefined.new());
+          f(undefined, logo.undefined.new());
         } else {
           var varname = varnames.shift();
           if (!varname.is_word) {
@@ -1606,7 +1621,7 @@ if (typeof exports === "object") populus = require("populus");
     LN: function(tokens, f)
     {
       logo.eval_number(tokens, function(num) {
-          f(undefined, logo.word(Math.log(num.value)));
+          f(undefined, logo.new_word(Math.log(num.value)));
         }, f);
     },
 
@@ -1615,7 +1630,7 @@ if (typeof exports === "object") populus = require("populus");
     LOG10: function(tokens, f)
     {
       logo.eval_number(tokens, function(num) {
-          f(undefined, logo.word(Math.log(num.value) / Math.log(10)));
+          f(undefined, logo.new_word(Math.log(num.value) / Math.log(10)));
         }, f);
     },
 
@@ -1648,7 +1663,7 @@ if (typeof exports === "object") populus = require("populus");
               } else {
                 logo.scope_global.things[name] = value;
               }
-              f(undefined, logo.$undefined.new());
+              f(undefined, logo.undefined.new());
             }, f);
         }, f);
     },
@@ -1663,7 +1678,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_token(tokens, function(thing1) {
           logo.eval_token(tokens, function(thing2) {
-              f(undefined, logo.word(thing2.contains(thing1)));
+              f(undefined, logo.new_word(thing2.contains(thing1)));
             }, f);
         }, f);
     },
@@ -1679,7 +1694,7 @@ if (typeof exports === "object") populus = require("populus");
     MINUS: function(tokens, f)
     {
       logo.eval_number(tokens, function(num) {
-          f(undefined, logo.word(-num.value));
+          f(undefined, logo.new_word(-num.value));
         }, f);
     },
 
@@ -1691,7 +1706,7 @@ if (typeof exports === "object") populus = require("populus");
       logo.eval_integer(tokens, function(num1) {
           logo.eval_integer(tokens, function(num2) {
               f(undefined,
-                logo.word(populus.sign(num2.value) *
+                logo.new_word(populus.sign(num2.value) *
                   Math.abs(num1.value % num2.value)));
             }, f);
         }, f);
@@ -1707,7 +1722,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_token(tokens, function(thing1) {
           logo.eval_token(tokens, function(thing2) {
-              f(undefined, logo.word(!thing1.equalp(thing2)));
+              f(undefined, logo.new_word(!thing1.equalp(thing2)));
             }, f);
         }, f);
     },
@@ -1740,7 +1755,7 @@ if (typeof exports === "object") populus = require("populus");
           } else {
             g(undefined, value);
           }
-        }, f, 2, logo.$undefined.new());
+        }, f, 2, logo.undefined.new());
     },
 
     // OUTPUT value
@@ -1764,7 +1779,7 @@ if (typeof exports === "object") populus = require("populus");
       logo.eval_number(tokens, function(num1) {
           logo["eval_" + (num1.value < 0 ? "integer" : "number")](tokens,
             function(num2) {
-              f(undefined, logo.word(Math.pow(num1.value, num2.value)));
+              f(undefined, logo.new_word(Math.pow(num1.value, num2.value)));
             }, f);
         }, f);
     },
@@ -1776,9 +1791,9 @@ if (typeof exports === "object") populus = require("populus");
     //   as input will accept this list.)
     PRIMITIVES: function(tokens, f)
     {
-      var list = logo.$list.new();
+      var list = logo.list.new();
       for (var p in logo.procedures) {
-        if (logo.procedures[p].primitive) list.value.push(logo.word(p));
+        if (logo.procedures[p].primitive) list.value.push(logo.new_word(p));
       }
       f(undefined, list);
     },
@@ -1797,7 +1812,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_slurp(tokens, function(v, _, g) {
           logo.print(v.toString());
-          g(undefined, logo.$undefined.new());
+          g(undefined, logo.undefined.new());
         }, f, 1);
     },
 
@@ -1811,9 +1826,9 @@ if (typeof exports === "object") populus = require("populus");
           if (!n.is_number) {
             g(logo.error(logo.ERR_DOESNT_LIKE, $show(n)));
           } else {
-            g(undefined, logo.word(n.value * product.value));
+            g(undefined, logo.new_word(n.value * product.value));
           }
-        }, f, 2, logo.word(1));
+        }, f, 2, logo.new_word(1));
     },
 
     // * is only binary, no slurping
@@ -1821,7 +1836,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_number(tokens, function(num1) {
           logo.eval_number(tokens, function(num2) {
-              f(undefined, logo.word(num1.value * num2.value));
+              f(undefined, logo.new_word(num1.value * num2.value));
             }, f);
         }, f);
     },
@@ -1871,12 +1886,12 @@ if (typeof exports === "object") populus = require("populus");
     {
       if (logo.scope.in_parens) {
         logo.eval_number(tokens, function(num) {
-            f(undefined, logo.word(1 / num.value));
+            f(undefined, logo.new_word(1 / num.value));
           }, f);
       } else {
         logo.eval_number(tokens, function(num1) {
             logo.eval_number(tokens, function(num2) {
-                f(undefined, logo.word(num1.value / num2.value));
+                f(undefined, logo.new_word(num1.value / num2.value));
               }, f);
           }, f);
       }
@@ -1887,7 +1902,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_number(tokens, function(num1) {
           logo.eval_number(tokens, function(num2) {
-              f(undefined, logo.word(num1.value / num2.value));
+              f(undefined, logo.new_word(num1.value / num2.value));
             }, f);
         }, f);
     },
@@ -1905,15 +1920,16 @@ if (typeof exports === "object") populus = require("populus");
         logo.eval_number(tokens, function(x) {
             logo.eval_number(tokens, function(y) {
                 if (x.value === 0) {
-                  f(undefined, logo.word(populus.sign(y.value) * Math.PI / 2));
+                  f(undefined, logo
+                    .new_word(populus.sign(y.value) * Math.PI / 2));
                 } else {
-                  f(undefined, logo.word(Math.atan(y.value / x.value)));
+                  f(undefined, logo.new_word(Math.atan(y.value / x.value)));
                 }
               }, f);
           }, f);
       } else {
         logo.eval_number(tokens, function(num) {
-            f(undefined, logo.word(Math.atan(num.value)));
+            f(undefined, logo.new_word(Math.atan(num.value)));
           }, f);
       }
     },
@@ -1923,7 +1939,7 @@ if (typeof exports === "object") populus = require("populus");
     RADCOS: function(tokens, f)
     {
       logo.eval_number(tokens, function(radians) {
-          f(undefined, logo.word(Math.cos(radians.value)));
+          f(undefined, logo.new_word(Math.cos(radians.value)));
         }, f);
     },
 
@@ -1932,7 +1948,7 @@ if (typeof exports === "object") populus = require("populus");
     RADSIN: function(tokens, f)
     {
       logo.eval_number(tokens, function(radians) {
-          f(undefined, logo.word(Math.sin(radians.value)));
+          f(undefined, logo.new_word(Math.sin(radians.value)));
         }, f);
     },
 
@@ -1953,7 +1969,7 @@ if (typeof exports === "object") populus = require("populus");
                 if (end.value - start.value < 0) {
                   f(logo.error(logo.ERR_DOESNT_LIKE, $show(start)));
                 } else {
-                  f(undefined, logo.word(MERSENNE_TWISTER
+                  f(undefined, logo.new_word(MERSENNE_TWISTER
                       .next_integer(start.value, end.value + 1)));
                 }
               }, f);
@@ -1963,7 +1979,8 @@ if (typeof exports === "object") populus = require("populus");
             if (num.value < 1) {
               f(logo.error(logo.ERR_DOESNT_LIKE, $show(num)));
             } else {
-              f(undefined, logo.word(MERSENNE_TWISTER.next_integer(num.value)));
+              f(undefined, logo
+                .new_word(MERSENNE_TWISTER.next_integer(num.value)));
             }
           }, f);
       }
@@ -2004,7 +2021,7 @@ if (typeof exports === "object") populus = require("populus");
       logo.eval_integer(tokens, function(num1) {
           logo.eval_integer(tokens, function(num2) {
               f(undefined,
-                logo.word(populus.sign(num1.value) *
+                logo.new_word(populus.sign(num1.value) *
                   Math.abs(num1.value % num2.value)));
             }, f);
         }, f);
@@ -2019,7 +2036,7 @@ if (typeof exports === "object") populus = require("populus");
     //   FOREACH, in which case # has a different meaning. (TODO)
     REPCOUNT: function(tokens, f)
     {
-      f(undefined, logo.word(logo.scope.repcount || -1));
+      f(undefined, logo.new_word(logo.scope.repcount || -1));
     },
 
     // REPEAT num instructionlist
@@ -2047,11 +2064,11 @@ if (typeof exports === "object") populus = require("populus");
       if (logo.scope.in_parens) {
         logo.eval_integer(tokens, function(seed) {
             MERSENNE_TWISTER.set_seed(seed.value);
-            f(undefined, logo.$undefined.new());
+            f(undefined, logo.undefined.new());
           }, f);
       } else {
         MERSENNE_TWISTER.set_seed();
-        f(undefined, logo.$undefined.new());
+        f(undefined, logo.undefined.new());
       }
     },
 
@@ -2060,7 +2077,7 @@ if (typeof exports === "object") populus = require("populus");
     ROUND: function(tokens, f)
     {
       logo.eval_number(tokens, function(num) {
-          f(undefined, logo.word(Math.round(num.value)));
+          f(undefined, logo.new_word(Math.round(num.value)));
         }, f);
     },
 
@@ -2088,7 +2105,7 @@ if (typeof exports === "object") populus = require("populus");
               if (error) {
                 f(error);
               } else {
-                var out = logo.$list.new();
+                var out = logo.list.new();
                 if (value.is_defined) out.value.push(value);
                 f(undefined, out);
               }
@@ -2111,7 +2128,7 @@ if (typeof exports === "object") populus = require("populus");
             sentence.value.push(thing);
           }
           g(undefined, sentence);
-        }, f, 2, logo.$list.new());
+        }, f, 2, logo.list.new());
     },
 
     // SHOW thing
@@ -2122,7 +2139,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_slurp(tokens, function(v, _, g) {
           logo.print(v.show());
-          g(undefined, logo.$undefined.new());
+          g(undefined, logo.undefined.new());
         }, f, 1);
     },
 
@@ -2131,7 +2148,7 @@ if (typeof exports === "object") populus = require("populus");
     SIN: function(tokens, f)
     {
       logo.eval_number(tokens, function(degrees) {
-          f(undefined, logo.word(Math.sin(populus.radians(degrees.value))));
+          f(undefined, logo.new_word(Math.sin(populus.radians(degrees.value))));
         }, f);
     },
 
@@ -2143,7 +2160,7 @@ if (typeof exports === "object") populus = require("populus");
           if (num.value < 0) {
             f(logo.error(logo.ERR_DOESNT_LIKE, $show(num)));
           } else {
-            f(undefined, logo.word(Math.sqrt(num.value)));
+            f(undefined, logo.new_word(Math.sqrt(num.value)));
           }
         }, f);
     },
@@ -2154,7 +2171,7 @@ if (typeof exports === "object") populus = require("populus");
     //   invoked.  The stopped procedure does not output a value.
     STOP: function(tokens, f)
     {
-      logo.scope.exit(undefined, logo.$undefined.new());
+      logo.scope.exit(undefined, logo.undefined.new());
     },
 
     // SUM num1 num2
@@ -2167,9 +2184,9 @@ if (typeof exports === "object") populus = require("populus");
           if (!n.is_number) {
             g(logo.error(logo.ERR_DOESNT_LIKE, $show(n)));
           } else {
-            g(undefined, logo.word(n.value + sum.value));
+            g(undefined, logo.new_word(n.value + sum.value));
           }
-        }, f, 2, logo.word(0));
+        }, f, 2, logo.new_word(0));
     },
 
     // + is only binary, no slurping
@@ -2177,7 +2194,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_number(tokens, function(num1) {
           logo.eval_number(tokens, function(num2) {
-              f(undefined, logo.word(num1.value + num2.value));
+              f(undefined, logo.new_word(num1.value + num2.value));
             }, f);
         }, f);
     },
@@ -2194,7 +2211,7 @@ if (typeof exports === "object") populus = require("populus");
             f(logo.error(logo.ERR_DOESNT_LIKE, $show(tf)));
           } else {
             logo.scope.test = tf.is_true;
-            f(undefined, logo.$undefined.new());
+            f(undefined, logo.undefined.new());
           }
         }, f);
     },
@@ -2234,7 +2251,7 @@ if (typeof exports === "object") populus = require("populus");
           if (time.value < 0) {
             f(logo.error(logo.ERR_DOESNT_LIKE, $show(time)));
           } else {
-            setTimeout(function() { f(undefined, logo.$undefined.new()); },
+            setTimeout(function() { f(undefined, logo.undefined.new()); },
               time.value * 1000 / 60);
           }
         }, f);
@@ -2249,9 +2266,9 @@ if (typeof exports === "object") populus = require("populus");
           if (!v.is_word) {
             g(logo.error(logo.ERR_DOESNT_LIKE, $show(v)));
           } else {
-            g(undefined, logo.word(w.toString() + v.toString()));
+            g(undefined, logo.new_word(w.toString() + v.toString()));
           }
-        }, f, 2, logo.word(""));
+        }, f, 2, logo.new_word(""));
     },
 
     // WORDP thing
@@ -2260,7 +2277,7 @@ if (typeof exports === "object") populus = require("populus");
     WORDP: function(tokens, f)
     {
       logo.eval_token(tokens, function(thing) {
-          f(undefined, logo.word(thing.is_word));
+          f(undefined, logo.new_word(thing.is_word));
         }, f);
     },
 

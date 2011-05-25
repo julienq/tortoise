@@ -119,14 +119,23 @@ if (SEED) logo.set_seed(SEED);
 
 // Read the library file (split line by line) then start prompting the user for
 // commands to execute
-fs.readFile(LIB, "utf8", function(error, data) {
-    if (error) throw error;
-    data.split("\n").forEach(eval_line);
-    for (var p in logo.procedures) logo.procedures[p].primitive = true;
-    process.stdin.resume;
-    RLI = rl.createInterface(process.stdin, process.stdout);
-    RLI.setPrompt(PROMPT[MODE]);
-    RLI.on("line", eval_line);
-    RLI.on("close", close);
-    RLI.prompt();
-  });
+if (LIB) {
+  fs.readFile(LIB, "utf8", function(error, data) {
+      if (error) throw error;
+      data.split("\n").forEach(eval_line);
+      repl();
+    });
+} else {
+  repl();
+}
+
+function repl()
+{
+  for (var p in logo.procedures) logo.procedures[p].primitive = true;
+  process.stdin.resume;
+  RLI = rl.createInterface(process.stdin, process.stdout);
+  RLI.setPrompt(PROMPT[MODE]);
+  RLI.on("line", eval_line);
+  RLI.on("close", close);
+  RLI.prompt();
+}
