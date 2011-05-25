@@ -4,58 +4,57 @@
 // This version uses canvas to draw, as opposed to SVG (but should have an SVG
 // export anyway.)
 
-logo.$turtle = Object.create(populus.$object);
+logo.turtle = populus.object.create();
 
-logo.$canvas_turtle = Object.create(logo.$turtle);
+logo.canvas_turtle = logo.turtle.create({
 
-logo.canvas_turtle = function(bg, fg, active, proto)
-{
-  var o = Object.create(proto || logo.$canvas_turtle);
-  o.bg = bg.getContext ? bg.getContext("2d") : bg;
-  o.fg = fg.getContext ? fg.getContext("2d") : fg;
-  o.active = active.getContext ? active.getContext("2d") : active;
-  return o;
-};
+    init: function(bg, fg, active, proto)
+    {
+      var self = this.call_super("init");
+      self.bg = bg.getContext ? bg.getContext("2d") : bg;
+      self.fg = fg.getContext ? fg.getContext("2d") : fg;
+      self.active = active.getContext ? active.getContext("2d") : active;
+      return self;
+    },
 
-logo.$canvas_turtle.clean = function()
-{
-  var W = this.bg.canvas.width;
-  var H = this.bg.canvas.height;
-  this.bg.fillRect(0, 0, W, H);
-  this.fg.clearRect(0, 0, W, H);
-  this.fg.strokeStyle = "white";
-};
+    clean: function()
+    {
+      var W = this.bg.canvas.width;
+      var H = this.bg.canvas.height;
+      this.bg.fillRect(0, 0, W, H);
+      this.fg.clearRect(0, 0, W, H);
+      this.fg.strokeStyle = "white";
+    },
 
-logo.$canvas_turtle.forward = function(d)
-{
-  var W = this.fg.canvas.width / 2;
-  var H = this.fg.canvas.height / 2;
-  this.fg.beginPath();
-  console.log("moveTo({0}, {1})".fmt(W - this.x, H + this.y));
-  this.fg.moveTo(W - this.x, H + this.y);
-  var a = (this.heading * Math.PI / 180) - Math.PI / 2;
-  this.x += d * Math.cos(a);
-  this.y += d * Math.sin(a);
-  console.log("lineTo({0}, {1})".fmt(W - this.x, H + this.y));
-  this.fg.lineTo(W - this.x, H + this.y);
-  this.fg.stroke();
-};
+    forward: function(d)
+    {
+      var W = this.fg.canvas.width / 2;
+      var H = this.fg.canvas.height / 2;
+      this.fg.beginPath();
+      populus.log("moveTo({0}, {1})".fmt(W - this.x, H + this.y));
+      this.fg.moveTo(W - this.x, H + this.y);
+      var a = (this.heading * Math.PI / 180) - Math.PI / 2;
+      this.x += d * Math.cos(a);
+      this.y += d * Math.sin(a);
+      populus.log("lineTo({0}, {1})".fmt(W - this.x, H + this.y));
+      this.fg.lineTo(W - this.x, H + this.y);
+      this.fg.stroke();
+    },
 
-logo.$canvas_turtle.home = function()
-{
-  this.x = 0;
-  this.y = 0;
-  this.heading = 0;
-};
+    home: function()
+    {
+      this.x = 0;
+      this.y = 0;
+      this.heading = 0;
+    },
 
-logo.$canvas_turtle.turn = function(incr)
-{
-  this.heading += incr;
-};
+    turn: function(incr) { this.heading += incr; },
+
+  });
 
 logo.init_canvas_turtle = function(bg, fg, active, proto)
 {
-  turtle = logo.canvas_turtle(bg, fg, active, proto);
+  turtle = logo.canvas_turtle.$new(bg, fg, active, proto);
 
   // BACK dist
   // BK dist

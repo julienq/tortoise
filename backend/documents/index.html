@@ -71,8 +71,7 @@ function eval_line(line)
         if (error) {
           MODE = "eval";
           if (error.error_code) {
-            logo.print("Error #{0}: {1}".fmt(error.error_code, error.message),
-              "error");
+            console.log("Error #{0}: {1}".fmt(error.error_code, error.message));
           } else {
             throw error;
           }
