@@ -13,7 +13,7 @@ if (typeof exports === "object") populus = require("populus");
   logo.trace = function() {};
 
   // Global Mersenne Twister used by RANDOM/RERANDOM
-  var MERSENNE_TWISTER = populus.mersenne_twister.new();
+  var MERSENNE_TWISTER = populus.mersenne_twister.$new();
 
   // (Re)set the seed for the randomizer
   logo.set_seed = function(seed) { MERSENNE_TWISTER.set_seed(seed); };
@@ -51,7 +51,7 @@ if (typeof exports === "object") populus = require("populus");
   }
 
   // An undefined word (and the base for the hierarchy of tokens)
-  logo.undefined = populus.object.create({
+  logo.$undefined = populus.object.create({
 
       apply: function(tokens, f)
       {
@@ -73,7 +73,7 @@ if (typeof exports === "object") populus = require("populus");
 
 
   // A Logo word
-  logo.word = logo.undefined.create({
+  logo.word = logo.$undefined.create({
       init: function(value, surface) {
           var self = this.call_super("init");
           self.value = value;
@@ -192,12 +192,12 @@ if (typeof exports === "object") populus = require("populus");
           return self;
         },
       butfirst: function() {
-          var list = logo.list.new();
+          var list = logo.list.$new();
           list.value = this.value.slice(1);
           return list;
         },
       butlast: function() {
-          var list = logo.list.new();
+          var list = logo.list.$new();
           list.value = this.value.slice(0, this.value.length - 1);
           return list;
         },
@@ -223,7 +223,7 @@ if (typeof exports === "object") populus = require("populus");
           })(this, token);
         },
       fput: function(t) {
-          var list = logo.list.new();
+          var list = logo.list.$new();
           list.value = this.value.slice(0);
           list.value.unshift(t);
           return list;
@@ -232,7 +232,7 @@ if (typeof exports === "object") populus = require("populus");
       is_word: false,
       item: function(i) { return this.value[i - 1]; },
       lput: function(t) {
-          var list = logo.list.new();
+          var list = logo.list.$new();
           list.value = this.value.slice(0);
           list.value.push(t);
           return list;
@@ -248,7 +248,7 @@ if (typeof exports === "object") populus = require("populus");
               } else {
                 logo.eval_token(tokens, loop, f);
               }
-            })(logo.undefined.new());
+            })(logo.$undefined.$new());
           } catch(e) {
             f(e);
           }
@@ -505,7 +505,7 @@ if (typeof exports === "object") populus = require("populus");
             } else {
               f(undefined, true);
             }
-          }, logo.undefined.new());
+          }, logo.$undefined.$new());
       }
     } catch (error) {
       f(error);
@@ -547,7 +547,7 @@ if (typeof exports === "object") populus = require("populus");
       if (definition.max_args === Infinity) {
         var arg_name = definition.args[n - 1][0].toUpperCase();
         logo.scope.things[definition.args[n - 1][0].toUpperCase()] =
-          logo.list.new();
+          logo.list.$new();
         logo.trace("& rest list {1}={2}".fmt($scope(), arg_name,
             logo.scope.things[arg_name].show()));
       }
@@ -602,7 +602,7 @@ if (typeof exports === "object") populus = require("populus");
               } else {
                 logo.scope.exit(undefined, value);
               }
-            }, logo.undefined.new());
+            }, logo.$undefined.$new());
         }
       })(0);
     };
@@ -656,7 +656,7 @@ if (typeof exports === "object") populus = require("populus");
     while (input.length > 0) {
       input = input.replace(/^\s+/, "");
       if (m = input.match(/^\[/)) {
-        var l = logo.list.new();
+        var l = logo.list.$new();
         l.parent = current_list;
         push_token(l);
         current_list = l;
@@ -670,7 +670,7 @@ if (typeof exports === "object") populus = require("populus");
         m = input.match(/^([^\s\[\]\\]|(\\.))+/);
         push_token(logo.new_word(m[0].replace(/\\(.)/g, "$1", m[0])));
       } else if (m = input.match(/^\(/)) {
-        var g = logo.group.new();
+        var g = logo.group.$new();
         g.parent = current_group;
         push_token(g);
         current_group = g;
@@ -687,8 +687,8 @@ if (typeof exports === "object") populus = require("populus");
             .match(/^((\d+(\.\d*)?)|(\d*\.\d+))(?=[\s\[\]\(\)+\-*\/=<>;]|$)/)) {
           push_token(logo.new_word(m[0], m[0]));
         } else if (m = input.match(/^\?(\d+)(?=[\s\[\]\(\)+\-*\/=<>;]|$)/)) {
-          var group = logo.group.new();
-          var q = logo.procedure.new("?");
+          var group = logo.group.$new();
+          var q = logo.procedure.$new("?");
           q.in_parens = true;
           group.value.push(q);
           group.value.push(logo.new_word(m[1]));
@@ -696,8 +696,8 @@ if (typeof exports === "object") populus = require("populus");
         } else if (m = input
             .match(/^(:?)((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/)) {
           if (m[1] === ":") {
-            var group = logo.group.new();
-            var thing = logo.procedure.new("THING");
+            var group = logo.group.$new();
+            var thing = logo.procedure.$new("THING");
             thing.in_parens = true;
             group.value.push(thing);
             group.value.push(logo.new_word(m[2].replace(/\\(.)/g, "$1"), m[0]));
@@ -705,14 +705,14 @@ if (typeof exports === "object") populus = require("populus");
             push_token(group);
           } else {
             push_token(logo.procedure
-                .new(m[0].replace(/\\(.)/g, "$1").toUpperCase(), m[0]));
+                .$new(m[0].replace(/\\(.)/g, "$1").toUpperCase(), m[0]));
           }
         } else if (m = input.match(/^(<=|>=|<>|=|<|>)/)) {
-          push_token(logo.infix.new(m[0], m[0], 1));
+          push_token(logo.infix.$new(m[0], m[0], 1));
         } else if (m = input.match(/^(\+|\-)/)) {
-          push_token(logo.infix.new(m[0], m[0], 2));
+          push_token(logo.infix.$new(m[0], m[0], 2));
         } else if (m = input.match(/^(\*|\/)/)) {
-          push_token(logo.infix.new(m[0], m[0], 3));
+          push_token(logo.infix.$new(m[0], m[0], 3));
         } else if (m = input.match(/./)) {
           push_token(logo.new_word(m[0]));
         }
@@ -747,7 +747,7 @@ if (typeof exports === "object") populus = require("populus");
       value = false;
     }
     // return proto.new(value, surface);
-    var w = proto.new(value, surface);
+    var w = proto.$new(value, surface);
     logo.trace("= new word: {{0}}".fmt(w.show()));
     return w;
   };
@@ -889,7 +889,7 @@ if (typeof exports === "object") populus = require("populus");
     } else {
       logo.eval_token(tokens, function(list) {
           if (logo.scope.test !== p) {
-            f(undefined, logo.undefined.new());
+            f(undefined, logo.$undefined.$new());
           } else {
             list.run(f);
           }
@@ -916,7 +916,7 @@ if (typeof exports === "object") populus = require("populus");
       if (logo.scope.repcount >= times) {
         logo.trace("@ {0} repeated {1} time{2}".fmt($scope(),
             logo.scope.repcount, logo.scope.repcount > 1 ? "s" : ""));
-        logo.scope.exit(undefined, logo.undefined.new());
+        logo.scope.exit(undefined, logo.$undefined.$new());
       } else {
         logo.trace("@ {0} repcount={1}".fmt($scope(), logo.scope.repcount));
         ++logo.scope.repcount;
@@ -957,7 +957,7 @@ if (typeof exports === "object") populus = require("populus");
           } else {
             g(undefined, value);
           }
-        }, f, 2, logo.undefined.new());
+        }, f, 2, logo.$undefined.$new());
     },
 
     // APPLY template inputlist
@@ -986,9 +986,9 @@ if (typeof exports === "object") populus = require("populus");
               logo.trace("# {0} apply template (inputs)".fmt($scope()));
               if (template.is_word) {
                 // Second form: apply "function-name [arguments]
-                var group = logo.group.new();
+                var group = logo.group.$new();
                 var procedure =
-                  logo.procedure.new(template.value.toUpperCase());
+                  logo.procedure.$new(template.value.toUpperCase());
                 procedure.in_parens = true;
                 group.value.push(procedure);
                 logo.scope.slots.forEach(function(slot) {
@@ -1073,7 +1073,7 @@ if (typeof exports === "object") populus = require("populus");
     //   tools MAP, MAP.SE, and FOREACH.
     BUTFIRSTS: function(tokens, f)
     {
-      var bfs = logo.list.new();
+      var bfs = logo.list.$new();
       logo.eval_list(tokens, function(list) {
           var error;
           for (var i = 0, n = list.value.length, error; i < n && !error; ++i) {
@@ -1109,18 +1109,18 @@ if (typeof exports === "object") populus = require("populus");
     //   the workspace.
     CONTENTS: function(tokens, f)
     {
-      var contents = logo.list.new();
-      var procedures = logo.list.new();
+      var contents = logo.list.$new();
+      var procedures = logo.list.$new();
       for (var p in logo.procedures) {
         if (!logo.procedures[p].primitive) {
           procedures.value.push(logo.new_word(p));
         }
       }
       contents.value.push(procedures);
-      var variables = logo.list.new();
+      var variables = logo.list.$new();
       for (var t in logo.scope.things) variables.value.push(logo.new_word(t));
       contents.value.push(variables);
-      var plists = logo.list.new();
+      var plists = logo.list.$new();
       contents.value.push(plists);
       f(undefined, contents);
     },
@@ -1147,7 +1147,7 @@ if (typeof exports === "object") populus = require("populus");
                   f(logo.error(logo.ERR_HOW_TO_FATAL, $show(oldname)));
                 } else {
                   logo.procedures[n] = p;
-                  f(undefined, logo.undefined.new());
+                  f(undefined, logo.$undefined.$new());
                 }
               }, f);
           }
@@ -1266,7 +1266,7 @@ if (typeof exports === "object") populus = require("populus");
       {
         (function erase() {
           if (procedures.count === 0) {
-            f(undefined, logo.undefined.new());
+            f(undefined, logo.$undefined.$new());
           } else {
             var p = procedures.value.shift();
             if (!p.is_word) {
@@ -1287,7 +1287,7 @@ if (typeof exports === "object") populus = require("populus");
       };
       logo.eval_token(tokens, function(contentslist) {
           if (contentslist.is_word) {
-            var list = logo.list.new();
+            var list = logo.list.$new();
             list.value.push(contentslist);
             erase_procedures(list);
           } else if (contentslist.is_list &&
@@ -1341,7 +1341,7 @@ if (typeof exports === "object") populus = require("populus");
     //     end
     FIRSTS: function(tokens, f)
     {
-      var firsts = logo.list.new();
+      var firsts = logo.list.$new();
       logo.eval_list(tokens, function(list) {
           var error;
           for (var i = 0, n = list.value.length, error; i < n && !error; ++i) {
@@ -1442,7 +1442,7 @@ if (typeof exports === "object") populus = require("populus");
               } else if (tf.is_true) {
                 list_then.run(f);
               } else {
-                f(undefined, logo.undefined.new());
+                f(undefined, logo.$undefined.$new());
               }
             }, f);
         }, f);
@@ -1555,7 +1555,7 @@ if (typeof exports === "object") populus = require("populus");
       logo.eval_slurp(tokens, function(v, list, g) {
           list.value.push(v);
           g(undefined, list);
-        }, f, 2, logo.list.new());
+        }, f, 2, logo.list.$new());
     },
 
     // LISTP thing
@@ -1603,7 +1603,7 @@ if (typeof exports === "object") populus = require("populus");
       }
       (function local() {
         if (varnames.length === 0) {
-          f(undefined, logo.undefined.new());
+          f(undefined, logo.$undefined.$new());
         } else {
           var varname = varnames.shift();
           if (!varname.is_word) {
@@ -1663,7 +1663,7 @@ if (typeof exports === "object") populus = require("populus");
               } else {
                 logo.scope_global.things[name] = value;
               }
-              f(undefined, logo.undefined.new());
+              f(undefined, logo.$undefined.$new());
             }, f);
         }, f);
     },
@@ -1755,7 +1755,7 @@ if (typeof exports === "object") populus = require("populus");
           } else {
             g(undefined, value);
           }
-        }, f, 2, logo.undefined.new());
+        }, f, 2, logo.$undefined.$new());
     },
 
     // OUTPUT value
@@ -1791,7 +1791,7 @@ if (typeof exports === "object") populus = require("populus");
     //   as input will accept this list.)
     PRIMITIVES: function(tokens, f)
     {
-      var list = logo.list.new();
+      var list = logo.list.$new();
       for (var p in logo.procedures) {
         if (logo.procedures[p].primitive) list.value.push(logo.new_word(p));
       }
@@ -1812,7 +1812,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_slurp(tokens, function(v, _, g) {
           logo.print(v.toString());
-          g(undefined, logo.undefined.new());
+          g(undefined, logo.$undefined.$new());
         }, f, 1);
     },
 
@@ -2064,11 +2064,11 @@ if (typeof exports === "object") populus = require("populus");
       if (logo.scope.in_parens) {
         logo.eval_integer(tokens, function(seed) {
             MERSENNE_TWISTER.set_seed(seed.value);
-            f(undefined, logo.undefined.new());
+            f(undefined, logo.$undefined.$new());
           }, f);
       } else {
         MERSENNE_TWISTER.set_seed();
-        f(undefined, logo.undefined.new());
+        f(undefined, logo.$undefined.$new());
       }
     },
 
@@ -2105,7 +2105,7 @@ if (typeof exports === "object") populus = require("populus");
               if (error) {
                 f(error);
               } else {
-                var out = logo.list.new();
+                var out = logo.list.$new();
                 if (value.is_defined) out.value.push(value);
                 f(undefined, out);
               }
@@ -2128,7 +2128,7 @@ if (typeof exports === "object") populus = require("populus");
             sentence.value.push(thing);
           }
           g(undefined, sentence);
-        }, f, 2, logo.list.new());
+        }, f, 2, logo.list.$new());
     },
 
     // SHOW thing
@@ -2139,7 +2139,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_slurp(tokens, function(v, _, g) {
           logo.print(v.show());
-          g(undefined, logo.undefined.new());
+          g(undefined, logo.$undefined.$new());
         }, f, 1);
     },
 
@@ -2171,7 +2171,7 @@ if (typeof exports === "object") populus = require("populus");
     //   invoked.  The stopped procedure does not output a value.
     STOP: function(tokens, f)
     {
-      logo.scope.exit(undefined, logo.undefined.new());
+      logo.scope.exit(undefined, logo.$undefined.$new());
     },
 
     // SUM num1 num2
@@ -2211,7 +2211,7 @@ if (typeof exports === "object") populus = require("populus");
             f(logo.error(logo.ERR_DOESNT_LIKE, $show(tf)));
           } else {
             logo.scope.test = tf.is_true;
-            f(undefined, logo.undefined.new());
+            f(undefined, logo.$undefined.$new());
           }
         }, f);
     },
@@ -2251,7 +2251,7 @@ if (typeof exports === "object") populus = require("populus");
           if (time.value < 0) {
             f(logo.error(logo.ERR_DOESNT_LIKE, $show(time)));
           } else {
-            setTimeout(function() { f(undefined, logo.undefined.new()); },
+            setTimeout(function() { f(undefined, logo.$undefined.$new()); },
               time.value * 1000 / 60);
           }
         }, f);
