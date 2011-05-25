@@ -1494,6 +1494,16 @@ if (typeof exports === "object") populus = require("populus");
         }, f);
     },
 
+    // INTEGERP thing
+    // INTEGER? thing
+    //   outputs TRUE if the input is an integer, FALSE otherwise.
+    INTEGERP: function(tokens, f)
+    {
+      logo.eval_token(tokens, function(thing) {
+          f(undefined, logo.new_word(thing.is_a(logo.integer)));
+        }, f);
+    },
+
     // ITEM index thing
     //   if the "thing" is a word, outputs the "index"th character of the
     //   word.  If the "thing" is a list, outputs the "index"th member of
@@ -1713,6 +1723,24 @@ if (typeof exports === "object") populus = require("populus");
 
     },
 
+    // NOT tf
+    //   outputs TRUE if the input is FALSE, and vice versa.  The input can be
+    //   a list, in which case it is taken as an expression to run; that
+    //   expression must produce a TRUE or FALSE value.
+    NOT: function(tokens, f)
+    {
+      logo.eval_token(tokens, function(tf) {
+          $check_tf(tf, function(error, tf_) {
+              if (error) {
+                f(error);
+              } else {
+                tf_.value = !tf_.value;
+                f(error, tf_);
+              }
+            });
+        }, f);
+    },
+
     // NOTEQUALP thing1 thing2
     // NOTEQUAL? thing1 thing2
     // thing1 <> thing2
@@ -1724,6 +1752,16 @@ if (typeof exports === "object") populus = require("populus");
           logo.eval_token(tokens, function(thing2) {
               f(undefined, logo.new_word(!thing1.equalp(thing2)));
             }, f);
+        }, f);
+    },
+
+    // NUMBERP thing
+    // NUMBER? thing
+    //   outputs TRUE if the input is a number, FALSE otherwise.
+    NUMBERP: function(tokens, f)
+    {
+      logo.eval_token(tokens, function(thing) {
+          f(undefined, logo.new_word(thing.is_a(logo.number)));
         }, f);
     },
 
