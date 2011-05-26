@@ -6,6 +6,108 @@ if (typeof exports === "object") populus = require("populus");
 // node.js
 (function(logo) {
 
+  logo.PROMPT_EVAL = "? ";
+  logo.PROMPT_DEFINE = "> ";
+  logo.PROMPT_CONTINUE = "~ ";
+  logo.PROMPT_BACKSLASH = "\\ ";
+
+  // Request a line of input from the REPL and evaluate it.
+  logo.eval_line = function(f)
+  {
+    logo.prompt(logo.PROMPT_EVAL, function(line) {
+        var tokens = logo.tokenize(line, f);
+      });
+  };
+
+  // Tokenize an input string
+  logo.tokenize = function(input, f, state)
+  {
+    if (!state) state = { tokens: [] };
+    var push_token = function(token)
+    {
+      if (state.current_list) {
+        state.current_list.value.push(token);
+      } else if (state.current_group) {
+        state.current_group.value.push(token);
+        if (state.current_group.value.length === 1) token.in_parens = true;
+      } else {
+        state.tokens.push(token);
+      }
+    }
+    var m;
+    while (input.length > 0) {
+      input = input.replace(/^\s+/, "");
+      if (m = input.match(/^;.*$/)) {
+        // TODO handle ~ and \ here
+      } else if (m = input.match(/^\[/)) {
+        var l = logo.list.$new();
+        l.parent = state.current_list;
+        push_token(l);
+        state.current_list = l;
+      } else if (m = input.match(/^\]/)) {
+        if (state.current_list) {
+          state.current_list = state.current_list.parent;
+        } else {
+          push_token(logo.error(logo.ERR_UNEXPECTED_BRACKET));
+        }
+      } else if (state.current_list) {
+        m = input.match(/^([^\s\[\]\\]|(\\.))+/);
+        push_token(logo.new_word(m[0].replace(/\\(.)/g, "$1", m[0])));
+      } else if (m = input.match(/^\(/)) {
+        var g = logo.group.$new();
+        g.parent = state.current_group;
+        push_token(g);
+        state.current_group = g;
+      } else if (m = input.match(/^\)/)) {
+        if (state.current_group) {
+          state.current_group = state.current_group.parent;
+        } else {
+          push_token(logo.error(logo.ERR_UNEXPECTED_PAREN));
+        }
+      } else {
+        if (m = input.match(/^"((?:[^\s\[\]\(\);\\]|(?:\\.))*)/)) {
+          push_token(logo.new_word(m[1].replace(/\\(.)/g, "$1"), m[0]));
+        } else if (m = input
+            .match(/^((\d+(\.\d*)?)|(\d*\.\d+))(?=[\s\[\]\(\)+\-*\/=<>;]|$)/)) {
+          push_token(logo.new_word(m[0], m[0]));
+        } else if (m = input.match(/^\?(\d+)(?=[\s\[\]\(\)+\-*\/=<>;]|$)/)) {
+          var group = logo.group.$new();
+          var q = logo.procedure.$new("?");
+          q.in_parens = true;
+          group.value.push(q);
+          group.value.push(logo.new_word(m[1]));
+          push_token(group);
+        } else if (m = input
+            .match(/^(:?)((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/)) {
+          if (m[1] === ":") {
+            var group = logo.group.$new();
+            var thing = logo.procedure.$new("THING");
+            thing.in_parens = true;
+            group.value.push(thing);
+            group.value.push(logo.new_word(m[2].replace(/\\(.)/g, "$1"), m[0]));
+            logo.trace("THING: {{0}}".fmt(group.show()));
+            push_token(group);
+          } else {
+            push_token(logo.procedure
+                .$new(m[0].replace(/\\(.)/g, "$1").toUpperCase(), m[0]));
+          }
+        } else if (m = input.match(/^(<=|>=|<>|=|<|>)/)) {
+          push_token(logo.infix.$new(m[0], m[0], 1));
+        } else if (m = input.match(/^(\+|\-)/)) {
+          push_token(logo.infix.$new(m[0], m[0], 2));
+        } else if (m = input.match(/^(\*|\/)/)) {
+          push_token(logo.infix.$new(m[0], m[0], 3));
+        } else if (m = input.match(/./)) {
+          push_token(logo.new_word(m[0]));
+        }
+      }
+      if (m) input = input.substring(m[0].length);
+    }
+    logo.trace(", tokens: [{0}]".fmt(state.tokens.map($show).join(" ")));
+    f(undefined, state.tokens);
+  };
+
+
   // Global scope
   logo.scope_global = logo.scope = { things: {} };
 
@@ -307,7 +409,8 @@ if (typeof exports === "object") populus = require("populus");
     var args = Array.prototype.slice.call(arguments, 1);
     // Add the current word to the list of argument
     args.unshift($show(logo.scope.current_token));
-    return { error_code: code, message: String.prototype.fmt.apply(msg, args) };
+    return { error_code: code, message: String.prototype.fmt.apply(msg, args),
+      apply: function(_, f) { f(this); } };
   };
 
   // Error messages; first argument is always the name of current work being
@@ -633,94 +736,6 @@ if (typeof exports === "object") populus = require("populus");
     } catch(e) {
       f(e);
     }
-  };
-
-  // Tokenize an input string an return a list of tokens
-  logo.tokenize = function(input)
-  {
-    var tokens = [];
-    var m;
-    var current_list = null;
-    var current_group = null;
-    var push_token = function(token)
-    {
-      if (current_list) {
-        current_list.value.push(token);
-      } else if (current_group) {
-        current_group.value.push(token);
-        if (current_group.value.length === 1) token.in_parens = true;
-      } else {
-        tokens.push(token);
-      }
-    }
-    while (input.length > 0) {
-      input = input.replace(/^\s+/, "");
-      if (m = input.match(/^\[/)) {
-        var l = logo.list.$new();
-        l.parent = current_list;
-        push_token(l);
-        current_list = l;
-      } else if (m = input.match(/^\]/)) {
-        if (current_list) {
-          current_list = current_list.parent;
-        } else {
-          throw logo.error(logo.ERR_UNEXPECTED_BRACKET);
-        }
-      } else if (current_list) {
-        m = input.match(/^([^\s\[\]\\]|(\\.))+/);
-        push_token(logo.new_word(m[0].replace(/\\(.)/g, "$1", m[0])));
-      } else if (m = input.match(/^\(/)) {
-        var g = logo.group.$new();
-        g.parent = current_group;
-        push_token(g);
-        current_group = g;
-      } else if (m = input.match(/^\)/)) {
-        if (current_group) {
-          current_group = current_group.parent;
-        } else {
-          throw logo.error(logo.ERR_UNEXPECTED_PAREN);
-        }
-      } else {
-        if (m = input.match(/^"((?:[^\s\[\]\(\);\\]|(?:\\.))*)/)) {
-          push_token(logo.new_word(m[1].replace(/\\(.)/g, "$1"), m[0]));
-        } else if (m = input
-            .match(/^((\d+(\.\d*)?)|(\d*\.\d+))(?=[\s\[\]\(\)+\-*\/=<>;]|$)/)) {
-          push_token(logo.new_word(m[0], m[0]));
-        } else if (m = input.match(/^\?(\d+)(?=[\s\[\]\(\)+\-*\/=<>;]|$)/)) {
-          var group = logo.group.$new();
-          var q = logo.procedure.$new("?");
-          q.in_parens = true;
-          group.value.push(q);
-          group.value.push(logo.new_word(m[1]));
-          push_token(group);
-        } else if (m = input
-            .match(/^(:?)((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/)) {
-          if (m[1] === ":") {
-            var group = logo.group.$new();
-            var thing = logo.procedure.$new("THING");
-            thing.in_parens = true;
-            group.value.push(thing);
-            group.value.push(logo.new_word(m[2].replace(/\\(.)/g, "$1"), m[0]));
-            logo.trace("THING: {{0}}".fmt(group.show()));
-            push_token(group);
-          } else {
-            push_token(logo.procedure
-                .$new(m[0].replace(/\\(.)/g, "$1").toUpperCase(), m[0]));
-          }
-        } else if (m = input.match(/^(<=|>=|<>|=|<|>)/)) {
-          push_token(logo.infix.$new(m[0], m[0], 1));
-        } else if (m = input.match(/^(\+|\-)/)) {
-          push_token(logo.infix.$new(m[0], m[0], 2));
-        } else if (m = input.match(/^(\*|\/)/)) {
-          push_token(logo.infix.$new(m[0], m[0], 3));
-        } else if (m = input.match(/./)) {
-          push_token(logo.new_word(m[0]));
-        }
-      }
-      if (m) input = input.substring(m[0].length);
-    }
-    logo.trace(", tokens: [{0}]".fmt(tokens.map($show).join(" ")));
-    return tokens;
   };
 
   // Create a word token of the correct type given the value (i.e. a word, a
@@ -2049,6 +2064,23 @@ if (typeof exports === "object") populus = require("populus");
             f(e);
           }
         });
+    },
+
+    // READWORD
+    // RW
+    //   reads a line from the read stream and outputs that line as a word.
+    //   The output is a single word even if the line contains spaces,
+    //   brackets, etc.  If the read stream is a file, and the end of file is
+    //   reached, READWORD outputs the empty list (not the empty word).
+    //   READWORD processes backslash, vertical bar, and tilde characters in
+    //   the read stream.  In the case of a tilde used for line continuation,
+    //   the output word DOES include the tilde and the newline characters, so
+    //   that the user program can tell exactly what the user entered.
+    //   Vertical bars in the line are also preserved in the output.
+    //   Backslash characters are not preserved in the output.
+    READWORD: function(tokens, f)
+    {
+
     },
 
     // REMAINDER num1 num2
