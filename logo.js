@@ -14,97 +14,117 @@ if (typeof exports === "object") populus = require("populus");
   // Request a line of input from the REPL and evaluate it.
   logo.eval_line = function(f)
   {
-    logo.prompt(logo.PROMPT_EVAL, function(line) {
-        var tokens = logo.tokenize(line, f);
-      });
+    logo.prompt(logo.PROMPT_EVAL, function(line) { logo.tokenize(line, f); })
   };
 
   // Tokenize an input string
   logo.tokenize = function(input, f, state)
   {
-    if (!state) state = { tokens: [] };
-    var push_token = function(token)
-    {
-      if (state.current_list) {
-        state.current_list.value.push(token);
-      } else if (state.current_group) {
-        state.current_group.value.push(token);
-        if (state.current_group.value.length === 1) token.in_parens = true;
-      } else {
-        state.tokens.push(token);
-      }
+    console.log("Tokenizing \"{0}\" ({1})".fmt(input, state ? state.id : ""));
+    if (!state) {
+      state = {
+        tokens: [],
+        id: populus.random_id(6),
+        push_token: function(token)
+        {
+          if (this.current_list) {
+            this.current_list.value.push(token);
+          } else if (this.current_group) {
+            this.current_group.value.push(token);
+            if (this.current_group.value.length === 1) token.in_parens = true;
+          } else {
+            this.tokens.push(token);
+          }
+        }
+      };
     }
     var m;
-    while (input.length > 0) {
-      input = input.replace(/^\s+/, "");
-      if (m = input.match(/^;.*$/)) {
-        // TODO handle ~ and \ here
-      } else if (m = input.match(/^\[/)) {
-        var l = logo.list.$new();
-        l.parent = state.current_list;
-        push_token(l);
-        state.current_list = l;
-      } else if (m = input.match(/^\]/)) {
-        if (state.current_list) {
-          state.current_list = state.current_list.parent;
-        } else {
-          push_token(logo.error(logo.ERR_UNEXPECTED_BRACKET));
-        }
-      } else if (state.current_list) {
-        m = input.match(/^([^\s\[\]\\]|(\\.))+/);
-        push_token(logo.new_word(m[0].replace(/\\(.)/g, "$1", m[0])));
-      } else if (m = input.match(/^\(/)) {
-        var g = logo.group.$new();
-        g.parent = state.current_group;
-        push_token(g);
-        state.current_group = g;
-      } else if (m = input.match(/^\)/)) {
-        if (state.current_group) {
-          state.current_group = state.current_group.parent;
-        } else {
-          push_token(logo.error(logo.ERR_UNEXPECTED_PAREN));
-        }
+    input = input.replace(/^\s+/, "");
+    if (input.length > 0) {
+      if (m = input.match(/^\\$/)) {
+        logo.prompt(logo.PROMPT_BACKSLASH,
+          function(line) { logo.tokenize(line, f, state); });
+      } else if (m = input.match(/^(;([^\\]|\\.)*)?~$/)) {
+        logo.prompt(logo.PROMPT_CONTINUE,
+          function(line) { logo.tokenize(line, f, state); });
       } else {
-        if (m = input.match(/^"((?:[^\s\[\]\(\);\\]|(?:\\.))*)/)) {
-          push_token(logo.new_word(m[1].replace(/\\(.)/g, "$1"), m[0]));
-        } else if (m = input
-            .match(/^((\d+(\.\d*)?)|(\d*\.\d+))(?=[\s\[\]\(\)+\-*\/=<>;]|$)/)) {
-          push_token(logo.new_word(m[0], m[0]));
-        } else if (m = input.match(/^\?(\d+)(?=[\s\[\]\(\)+\-*\/=<>;]|$)/)) {
-          var group = logo.group.$new();
-          var q = logo.procedure.$new("?");
-          q.in_parens = true;
-          group.value.push(q);
-          group.value.push(logo.new_word(m[1]));
-          push_token(group);
-        } else if (m = input
-            .match(/^(:?)((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/)) {
-          if (m[1] === ":") {
-            var group = logo.group.$new();
-            var thing = logo.procedure.$new("THING");
-            thing.in_parens = true;
-            group.value.push(thing);
-            group.value.push(logo.new_word(m[2].replace(/\\(.)/g, "$1"), m[0]));
-            logo.trace("THING: {{0}}".fmt(group.show()));
-            push_token(group);
+        if (m = input.match(/^;([^\\]|\\.)*/)) {
+          // comment, just skip
+        } else if (m = input.match(/^\[/)) {
+          var l = logo.list.$new();
+          l.parent = state.current_list;
+          state.push_token(l);
+          state.current_list = l;
+        } else if (m = input.match(/^\]/)) {
+          if (state.current_list) {
+            state.current_list = state.current_list.parent;
           } else {
-            push_token(logo.procedure
-                .$new(m[0].replace(/\\(.)/g, "$1").toUpperCase(), m[0]));
+            state.push_token(logo.error(logo.ERR_UNEXPECTED_BRACKET));
           }
-        } else if (m = input.match(/^(<=|>=|<>|=|<|>)/)) {
-          push_token(logo.infix.$new(m[0], m[0], 1));
-        } else if (m = input.match(/^(\+|\-)/)) {
-          push_token(logo.infix.$new(m[0], m[0], 2));
-        } else if (m = input.match(/^(\*|\/)/)) {
-          push_token(logo.infix.$new(m[0], m[0], 3));
-        } else if (m = input.match(/./)) {
-          push_token(logo.new_word(m[0]));
+        } else if (state.current_list) {
+          m = input.match(/^([^\s\[\]\\]|(\\.))+/);
+          state.push_token(logo.new_word(m[0].replace(/\\(.)/g, "$1", m[0])));
+        } else if (m = input.match(/^\(/)) {
+          var g = logo.group.$new();
+          g.parent = state.current_group;
+          state.push_token(g);
+          state.current_group = g;
+        } else if (m = input.match(/^\)/)) {
+          if (state.current_group) {
+            state.current_group = state.current_group.parent;
+          } else {
+            state.push_token(logo.error(logo.ERR_UNEXPECTED_PAREN));
+          }
+        } else {
+          if (m = input.match(/^"((?:[^\s\[\]\(\);\\]|(?:\\.))*)/)) {
+            state.push_token(logo.new_word(m[1].replace(/\\(.)/g, "$1"), m[0]));
+          } else if (m = input
+              .match(/^((\d+(\.\d*)?)|(\d*\.\d+))(?=[\s\[\]\(\)+\-*\/=<>;]|$)/)) {
+            state.push_token(logo.new_word(m[0], m[0]));
+          } else if (m = input.match(/^\?(\d+)(?=[\s\[\]\(\)+\-*\/=<>;]|$)/)) {
+            var group = logo.group.$new();
+            var q = logo.procedure.$new("?");
+            q.in_parens = true;
+            group.value.push(q);
+            group.value.push(logo.new_word(m[1]));
+            state.push_token(group);
+          } else if (m = input
+              .match(/^(:?)((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/)) {
+            if (m[1] === ":") {
+              var group = logo.group.$new();
+              var thing = logo.procedure.$new("THING");
+              thing.in_parens = true;
+              group.value.push(thing);
+              group.value.push(logo.new_word(m[2].replace(/\\(.)/g, "$1"), m[0]));
+              logo.trace("THING: {{0}}".fmt(group.show()));
+              state.push_token(group);
+            } else {
+              state.push_token(logo.procedure
+                  .$new(m[0].replace(/\\(.)/g, "$1").toUpperCase(), m[0]));
+            }
+          } else if (m = input.match(/^(<=|>=|<>|=|<|>)/)) {
+            state.push_token(logo.infix.$new(m[0], m[0], 1));
+          } else if (m = input.match(/^(\+|\-)/)) {
+            state.push_token(logo.infix.$new(m[0], m[0], 2));
+          } else if (m = input.match(/^(\*|\/)/)) {
+            state.push_token(logo.infix.$new(m[0], m[0], 3));
+          } else if (m = input.match(/./)) {
+            state.push_token(logo.new_word(m[0]));
+          }
+        }
+        if (m) {
+          logo.tokenize(input.substring(m[0].length), f, state);
+        } else {
+          f(logo.error(logo.ERR_UNEXPECTED_INPUT, input));
         }
       }
-      if (m) input = input.substring(m[0].length);
+    } else if (state.current_group || state.current_list) {
+      logo.prompt(logo.PROMPT_CONTINUE,
+        function(line) { logo.tokenize(line, f, state); });
+    } else {
+      logo.trace(", tokens: [{0}]".fmt(state.tokens.map($show).join(" ")));
+      f(undefined, state.tokens);
     }
-    logo.trace(", tokens: [{0}]".fmt(state.tokens.map($show).join(" ")));
-    f(undefined, state.tokens);
   };
 
 
@@ -431,6 +451,7 @@ if (typeof exports === "object") populus = require("populus");
   logo.ERR_HOW_TO_FATAL = 24;
   logo.ERR_NO_TEST = 25;
   logo.ERR_UNEXPECTED_BRACKET = 26;
+  logo.ERR_UNEXPECTED_INPUT = 101;
 
   logo.error_messages = [];
   logo.error_messages[logo.ERR_INTERNAL] = "Fatal internal error ({1})";
@@ -451,6 +472,7 @@ if (typeof exports === "object") populus = require("populus");
   logo.error_messages[logo.ERR_ALREADY_DEFINED] = "{1} is already defined";
   logo.error_messages[logo.ERR_NO_TEST] = "{0} without TEST";
   logo.error_messages[logo.ERR_UNEXPECTED_BRACKET] = "Unexpected \"]\"";
+  logo.error_messages[logo.ERR_UNEXPECTED_INPUT] = "Unexpected input: \"{1}\"";
 
 
   // Eval the first token of a list of tokens. The token will then consume the

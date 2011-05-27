@@ -87,7 +87,6 @@ function repl()
         throw error;
       }
     }
-    if (value) console.log(value);
     logo.eval_line(eval);
   })();
 }
