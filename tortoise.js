@@ -64,12 +64,18 @@ function show_help(node, name)
   process.exit(0);
 }
 
+var lines = [];
 
-logo.prompt = function(prompt, f)
+// Prompt for a single line of input
+logo.prompt_raw = function(p, f)
 {
-  RLI.once("line", f);
-  RLI.setPrompt(prompt);
-  RLI.prompt();
+  if (lines.length > 0) {
+    f(lines.shift());
+  } else {
+    RLI.once("line", f);
+    RLI.setPrompt(p);
+    RLI.prompt();
+  }
 };
 
 function repl()
@@ -101,8 +107,24 @@ if (SEED) logo.set_seed(SEED);
 if (LIB) {
   fs.readFile(LIB, "utf8", function(error, data) {
       if (error) throw error;
-      data.split("\n").forEach(eval_line);
-      repl();
+      lines = data.split(/\n/);
+      (function eval() {
+        if (lines.length > 0) {
+          logo.eval_input(lines.shift(), function(error, value) {
+            if (error) {
+              if (error.error_code) {
+                console.log("Error #{0}: {1}"
+                  .fmt(error.error_code, error.message));
+              } else {
+                throw error;
+              }
+            }
+            eval();
+          });
+        } else {
+          repl();
+        }
+      })();
     });
 } else {
   repl();
