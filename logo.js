@@ -6,6 +6,379 @@ if (typeof exports === "object") populus = require("populus");
 // node.js
 (function(logo) {
 
+  logo.PROMPT_EVAL = "? ";        // normal eval prompt
+  logo.PROMPT_DEFINE = "> ";      // function definition
+  logo.PROMPT_CONTINUE = "~ ";    // continue (after ~ or inside brackets)
+  logo.PROMPT_BACKSLASH = "\\ ";  // continue (after \)
+  logo.PROMPT_READ = "";          // no prompt for READLIST, READWORD, etc.
+
+  // Prompt for a line, handling the ~ character
+  // The REPL needs to define prompt_raw, which prompts for a single line and
+  // returns the raw version.
+  logo.prompt = function(p, f)
+  {
+    logo.prompt_raw(p, function(line) {
+      var m = line.match(/(^|[^\\])(\\\\)*~$/);
+      if (m) {
+        line = line.replace(/((?:^|[^\\])(?:\\\\)*)(;.*)?~$/, "$1");
+        logo.prompt(logo.PROMPT_CONTINUE, function(line_) { f(line + line_); });
+      } else {
+        f(line);
+      }
+    });
+  };
+
+  // Request a complete line of input (managing lines broken up by ~, \ or
+  // newlines inside brackets) from the REPL, tokenize it and evaluate it.
+  logo.eval_line = function(f)
+  {
+    logo.scope = logo.scope_global;
+    logo.scope.exit = f;
+    logo.prompt(logo.PROMPT_EVAL,
+        function(input) { logo.eval_input(input, f); });
+  };
+
+  // Eval an already obtained line of input
+  logo.eval_input = function(input, f)
+  {
+    logo.tokenize(input, function(error, tokens) {
+        if (error) {
+          f(error);
+        } else if (tokens.length > 0 && (tokens[0].is_procedure("TO") ||
+            tokens[0].is_procedure(".MACRO"))) {
+          logo.read_procedure_definition(tokens, input, f);
+        } else {
+          logo.eval_regular_line(tokens, f);
+        }
+      });
+  };
+
+  // Tokenize an input string
+  logo.tokenize = function(input, f, state)
+  {
+    logo.trace("Tokenizing \"{0}\" ({1})".fmt(input, state ? state.id : ""));
+    if (!state) {
+      state = {
+        tokens: [],
+        id: populus.random_id(6),
+        push_token: function(token)
+        {
+          if (this.current_list) {
+            this.current_list.value.push(token);
+          } else if (this.current_group) {
+            this.current_group.value.push(token);
+            if (this.current_group.value.length === 1) token.in_parens = true;
+          } else {
+            this.tokens.push(token);
+          }
+        }
+      };
+    }
+    var m;
+    input = input.replace(/^\s+/, "");
+    if (input.length > 0) {
+      if (m = input.match(/^\\$/)) {
+        logo.prompt(logo.PROMPT_BACKSLASH,
+          function(line) { logo.tokenize(line, f, state); });
+      } else {
+        if (m = input.match(/^;([^\\]|\\.)*/)) {
+          // comment, just skip
+        } else if (m = input.match(/^\[/)) {
+          var l = logo.list.$new();
+          l.parent = state.current_list;
+          state.push_token(l);
+          state.current_list = l;
+        } else if (m = input.match(/^\]/)) {
+          if (state.current_list) {
+            state.current_list = state.current_list.parent;
+          } else {
+            state.push_token(logo.error(logo.ERR_UNEXPECTED_BRACKET));
+          }
+        } else if (state.current_list) {
+          m = input.match(/^([^\s\[\]\\]|(\\.))+/);
+          state.push_token(logo.new_word(m[0].replace(/\\(.)/g, "$1", m[0])));
+        } else if (m = input.match(/^\(/)) {
+          var g = logo.group.$new();
+          g.parent = state.current_group;
+          state.push_token(g);
+          state.current_group = g;
+        } else if (m = input.match(/^\)/)) {
+          if (state.current_group) {
+            state.current_group = state.current_group.parent;
+          } else {
+            state.push_token(logo.error(logo.ERR_UNEXPECTED_PAREN));
+          }
+        } else {
+          if (m = input.match(/^"((?:[^\s\[\]\(\);\\]|(?:\\.))*)/)) {
+            state.push_token(logo.new_word(m[1].replace(/\\(.)/g, "$1"), m[0]));
+          } else if (m = input
+              .match(/^((\d+(\.\d*)?)|(\d*\.\d+))(?=[\s\[\]\(\)+\-*\/=<>;]|$)/))
+          {
+            state.push_token(logo.new_word(m[0], m[0]));
+          } else if (m = input.match(/^\?(\d+)(?=[\s\[\]\(\)+\-*\/=<>;]|$)/)) {
+            var group = logo.group.$new();
+            var q = logo.procedure.$new("?");
+            q.in_parens = true;
+            group.value.push(q);
+            group.value.push(logo.new_word(m[1]));
+            state.push_token(group);
+          } else if (m = input
+              .match(/^(:?)((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/)) {
+            if (m[1] === ":") {
+              var group = logo.group.$new();
+              var thing = logo.procedure.$new("THING");
+              thing.in_parens = true;
+              group.value.push(thing);
+              group.value.push(logo.new_word(m[2].replace(/\\(.)/g, "$1"),
+                    m[0]));
+              logo.trace("THING: {{0}}".fmt(group.show()));
+              state.push_token(group);
+            } else {
+              state.push_token(logo.procedure
+                  .$new(m[0].replace(/\\(.)/g, "$1").toUpperCase(), m[0]));
+            }
+          } else if (m = input.match(/^(<=|>=|<>|=|<|>)/)) {
+            state.push_token(logo.infix.$new(m[0], m[0], 1));
+          } else if (m = input.match(/^(\+|\-)/)) {
+            state.push_token(logo.infix.$new(m[0], m[0], 2));
+          } else if (m = input.match(/^(\*|\/)/)) {
+            state.push_token(logo.infix.$new(m[0], m[0], 3));
+          } else if (m = input.match(/./)) {
+            state.push_token(logo.new_word(m[0]));
+          }
+        }
+        if (m) {
+          logo.tokenize(input.substring(m[0].length), f, state);
+        } else {
+          f(logo.error(logo.ERR_UNEXPECTED_INPUT, input));
+        }
+      }
+    } else if (state.current_group || state.current_list) {
+      logo.prompt(logo.PROMPT_CONTINUE,
+        function(line) { logo.tokenize(line, f, state); });
+    } else {
+      logo.trace(", tokens: [{0}]".fmt(state.tokens.map($show).join(" ")));
+      f(undefined, state.tokens);
+    }
+  };
+
+  // Normal evalution mode (i.e. not a function definition)
+  logo.eval_regular_line = function(tokens, f)
+  {
+    logo.eval_loop(tokens, function(error, value) {
+        if (error) {
+          f(error);
+        } else if (tokens.length !== 0) {
+          f(logo.error(ERR_INTERNAL, "There should be no input left?!"));
+        } else {
+          f(undefined, value);
+        }
+      }, logo.$undefined.$new());
+  };
+
+  // Read a line starting with TO
+  logo.read_procedure_definition = function(tokens, input, f)
+  {
+    var args = [];
+    var to = tokens.shift();
+    var is_macro = to.is_procedure(".MACRO");
+    logo.scope.current_token = to;
+    if (tokens.length > 0) {
+      // Read the name of the procedure
+      var name = tokens.shift();
+      if (!name.is_a(logo.procedure)) {
+        f(logo.error(logo.ERR_DOESNT_LIKE, name.show()));
+      } else if (name.value.toUpperCase() in logo.procedures) {
+        f(logo.error(logo.ERR_ALREADY_DEFINED, name.show()));
+      } else {
+        var required_ok = true;  // can read required inputs (THING "x)
+        var optional_ok = true;  // can read optional inputs [:x "y]
+        var rest_ok = true;      // can read rest input [:x]
+        var default_ok = true;   // can read default number n
+        var min_args = 0;        // min number of arguments (i.e. req'd)
+        var max_args = 0;        // max number of arguments (maybe ∞)
+        var default_args = 0;    // default number of arguments
+        (function read_var() {
+          if (tokens.length === 0) {
+            delete logo.scope.current_token;
+            logo.read_procedure_body(f, { to: to,
+              name: name.value.toUpperCase(), args: args, source: input,
+              tokens: [], is_macro: is_macro, min_args: min_args,
+              max_args: max_args || min_args,
+              default_args: default_args || min_args });
+          } else {
+            var input = tokens.shift();
+            if (required_ok && input.is_thing) {
+              // Read a required input
+              args.push(input.value[1].value);
+              ++min_args;
+              read_var();
+            } else if (optional_ok && input.is_list &&
+              input.value.length > 1) {
+              var m = input.value[0].value
+                .match(/^:((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/);
+              if (m) {
+                // Read an optional input
+                input.value.shift();
+                args.push([m[1].replace(/\\(.)/g, "$1"), input]);
+                required_ok = false;
+                read_var();
+              } else {
+                f(logo.error(logo.ERR_DOESNT_LIKE, input.show()));
+              }
+            } else if (rest_ok && input.is_list &&
+                input.value.length === 1) {
+              var m = input.value[0].value
+                .match(/^:((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/);
+              if (m) {
+                // Read a rest input
+                args.push([m[1].replace(/\\(.)/g, "$1")]);
+                max_args = Infinity;
+                required_ok = false;
+                optional_ok = false;
+                rest_ok = false;
+                read_var();
+              } else {
+                f(logo.error(logo.ERR_DOESNT_LIKE, input.show()));
+              }
+            } else if (default_ok && input.is_integer) {
+              // Read a default number of arguments
+              required_ok = false;
+              optional_ok = false;
+              rest_ok = false;
+              default_ok = false;
+              default_args = input.value;
+              read_var();
+            } else {
+              f(logo.error(logo.ERR_DOESNT_LIKE, input.show()));
+            }
+          }
+        })();
+      }
+    }
+  };
+
+  // Read a procedure body (after the title line, storing all tokens and
+  // stopping when the single token "END" is found)
+  logo.read_procedure_body = function(f, def)
+  {
+    logo.prompt(logo.PROMPT_DEFINE, function(line) {
+        logo.tokenize(line, function(error, tokens) {
+            if (error) {
+              f(error);
+            } else {
+              def.source += "\n" + line;
+              if (tokens.length === 1 && tokens[0].is_procedure("END")) {
+                logo.procedures[def.name] = logo.make_procedure(def);
+                f(undefined, logo.$undefined.$new());
+              } else {
+                def.tokens = def.tokens.concat(tokens);
+                logo.read_procedure_body(f, def);
+              }
+            }
+          });
+      });
+  };
+
+  // Create a procedure from its definition (name, arguments, source and tokens)
+  logo.make_procedure = function(definition)
+  {
+    var p = function(tokens, f)
+    {
+      var parent = logo.scope;
+      logo.scope = { parent: parent,
+        current_token: parent.current_token,
+        things: Object.create(parent.things),
+        in_parens: parent.in_parens,
+        procedure: true,
+        exit: function(error, value) {
+            logo.scope = parent;
+            if (error) {
+              f(error);
+            } else if (definition.is_macro) {
+              value.run(f);
+            } else {
+              logo.trace("& {0} (exited with value {1})"
+                  .fmt($scope(), value.show()));
+              f(error, value);
+            }
+          } };
+      // In parens read between min and max args, otherwise the default number
+      // of arguments. If we haven't read all arguments instantiate the ones
+      // that have not been read with the default expressions.
+      var min = logo.scope.in_parens ? definition.min_args :
+        definition.default_args;
+      var max = logo.scope.in_parens ? definition.max_args :
+        definition.default_args;
+      var n = definition.args.length;
+      var m = Math.max(max, n);
+      if (definition.max_args === Infinity) {
+        var arg_name = definition.args[n - 1][0].toUpperCase();
+        logo.scope.things[definition.args[n - 1][0].toUpperCase()] =
+          logo.list.$new();
+        logo.trace("& rest list {1}={2}".fmt($scope(), arg_name,
+            logo.scope.things[arg_name].show()));
+      }
+      logo.trace("& reading {1}-{2} argument{3}/{4}"
+          .fmt($scope(), min, max, max > 1 ? "s" : "", n));
+      (function eval_args(i) {
+        if (i < m) {
+          var j = Math.min(i, n - 1);
+          var arg_name = (definition.args[j] instanceof Array ?
+            definition.args[j][0] : definition.args[j]).toUpperCase();
+          var default_expr = definition.args[j] instanceof Array ?
+            definition.args[j][1] : null;
+          var rest = definition.args[j] instanceof Array && !default_expr;
+          logo.trace("& Getting arg #{1}/{2}: {3} ({4})".fmt($scope(), i,
+              j, arg_name, rest ? "regular" : "rest"));
+          var g = function(error, value)
+          {
+            if (error) {
+              f(error);
+            } else {
+              if (rest) {
+                logo.scope.things[arg_name].value.push(value);
+              } else {
+                logo.scope.things[arg_name] = value;
+              }
+              logo.trace("& {1}={2}".fmt($scope(), arg_name,
+                    logo.scope.things[arg_name].show()));
+              eval_args(i + 1);
+            }
+          };
+          if (i < min || (i < max && tokens.length > 0)) {
+            logo.trace("& normal arg");
+            logo.eval(tokens, g);
+          } else if (default_expr) {
+            logo.trace("& default arg");
+            default_expr.run(g);
+          } else {
+            logo.trace("& nothing left");
+            eval_args(m);
+          }
+        } else {
+          delete logo.scope.current_token;
+          var tokens_ = definition.tokens.slice(0);
+          logo.trace("& {0} <{1}>".fmt($scope(),
+              tokens_.map(function(x) { return x.show(); }).join(" ")));
+          logo.eval_loop(tokens_, function(error, value) {
+              if (error) {
+                f(error);
+              } else if (tokens_.length !== 0) {
+                f(logo.error(logo.ERR_INTERNAL,
+                    "There should be no input left?!"));
+              } else {
+                logo.scope.exit(undefined, value);
+              }
+            }, logo.$undefined.$new());
+        }
+      })(0);
+    };
+    p._source = definition.source;
+    return p;
+  };
+
+
   // Global scope
   logo.scope_global = logo.scope = { things: {} };
 
@@ -240,18 +613,19 @@ if (typeof exports === "object") populus = require("populus");
 
       // Evaluate the list as a list of tokens
       run: function(f) {
-          try {
-            var tokens = logo.tokenize(this.toString());
-            (function loop(val) {
-              if (tokens.length === 0) {
-                f(undefined, val);
+          logo.tokenize(this.toString(), function(error, tokens) {
+              if (error) {
+                f(error)
               } else {
-                logo.eval_token(tokens, loop, f);
+                (function loop(val) {
+                  if (tokens.length === 0) {
+                    f(undefined, val);
+                  } else {
+                    logo.eval_token(tokens, loop, f);
+                  }
+                })(logo.$undefined.$new());
               }
-            })(logo.$undefined.$new());
-          } catch(e) {
-            f(e);
-          }
+            });
         },
 
       show: function() { return "[" + this.toString() + "]"; },
@@ -307,7 +681,8 @@ if (typeof exports === "object") populus = require("populus");
     var args = Array.prototype.slice.call(arguments, 1);
     // Add the current word to the list of argument
     args.unshift($show(logo.scope.current_token));
-    return { error_code: code, message: String.prototype.fmt.apply(msg, args) };
+    return { error_code: code, message: String.prototype.fmt.apply(msg, args),
+      apply: function(_, f) { f(this); } };
   };
 
   // Error messages; first argument is always the name of current work being
@@ -328,6 +703,7 @@ if (typeof exports === "object") populus = require("populus");
   logo.ERR_HOW_TO_FATAL = 24;
   logo.ERR_NO_TEST = 25;
   logo.ERR_UNEXPECTED_BRACKET = 26;
+  logo.ERR_UNEXPECTED_INPUT = 101;
 
   logo.error_messages = [];
   logo.error_messages[logo.ERR_INTERNAL] = "Fatal internal error ({1})";
@@ -348,6 +724,7 @@ if (typeof exports === "object") populus = require("populus");
   logo.error_messages[logo.ERR_ALREADY_DEFINED] = "{1} is already defined";
   logo.error_messages[logo.ERR_NO_TEST] = "{0} without TEST";
   logo.error_messages[logo.ERR_UNEXPECTED_BRACKET] = "Unexpected \"]\"";
+  logo.error_messages[logo.ERR_UNEXPECTED_INPUT] = "Unexpected input: \"{1}\"";
 
 
   // Eval the first token of a list of tokens. The token will then consume the
@@ -399,328 +776,6 @@ if (typeof exports === "object") populus = require("populus");
     } else {
       f(undefined, value);
     }
-  };
-
-  // Evaluate one line of input, and call the continuation with the value true
-  // to stay in eval mode, or false to switch to definition mode (when the line
-  // starts with TO and correctly start a procedure definition.)
-  logo.eval_input = function(input, f)
-  {
-    logo.scope = logo.scope_global;
-    logo.scope.exit = f;
-    try {
-      var tokens = logo.tokenize(input);
-      logo.trace("eval_input: [{0}]"
-          .fmt(tokens.map(function(x) { return x.show(); }).join(" ")));
-      if (tokens.length > 0 && (tokens[0].is_procedure("TO") ||
-          tokens[0].is_procedure(".MACRO"))) {
-        if (logo.current_def) {
-          f(logo.error(ERR_INTERNAL, "Shouldn't be in eval mode here?!"));
-        } else {
-          var is_macro = tokens[0].is_procedure(".MACRO");
-          var args = [];
-          var to = tokens.shift();
-          logo.scope.current_token = to;
-          if (tokens.length > 0) {
-            // Read the name of the procedure
-            var name = tokens.shift();
-            if (!name.is_a(logo.procedure)) {
-              f(logo.error(logo.ERR_DOESNT_LIKE, $show(name)));
-            } else if (name in logo.procedures) {
-              f(logo.error(logo.ERR_ALREADY_DEFINED, $show(name)));
-            } else {
-              var required_ok = true;  // can read required inputs (THING "x)
-              var optional_ok = true;  // can read optional inputs [:x "y]
-              var rest_ok = true;      // can read rest input [:x]
-              var default_ok = true;   // can read default number n
-              var min_args = 0;        // min number of arguments (i.e. req'd)
-              var max_args = 0;        // max number of arguments (maybe ∞)
-              var default_args = 0;    // default number of arguments
-              (function read_var() {
-                if (tokens.length === 0) {
-                  logo.current_def = { to: to, name: name.value, args: args,
-                    source: input, tokens: [], is_macro: is_macro,
-                    min_args: min_args, max_args: max_args || min_args,
-                    default_args: default_args || min_args };
-                  delete logo.scope.current_token;
-                  f(undefined, false);
-                } else {
-                  var input = tokens.shift();
-                  if (required_ok && input.is_thing) {
-                    // Read a required input
-                    args.push(input.value[1].value);
-                    ++min_args;
-                    read_var();
-                  } else if (optional_ok && input.is_list &&
-                    input.value.length > 1) {
-                    var m = input.value[0].value
-                      .match(/^:((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/);
-                    if (m) {
-                      // Read an optional input
-                      input.value.shift();
-                      args.push([m[1].replace(/\\(.)/g, "$1"), input]);
-                      required_ok = false;
-                      read_var();
-                    } else {
-                      f(logo.error(logo.ERR_DOESNT_LIKE, input.show()));
-                    }
-                  } else if (rest_ok && input.is_list &&
-                      input.value.length === 1) {
-                    var m = input.value[0].value
-                      .match(/^:((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/);
-                    if (m) {
-                      // Read a rest input
-                      args.push([m[1].replace(/\\(.)/g, "$1")]);
-                      max_args = Infinity;
-                      required_ok = false;
-                      optional_ok = false;
-                      rest_ok = false;
-                      read_var();
-                    } else {
-                      f(logo.error(logo.ERR_DOESNT_LIKE, input.show()));
-                    }
-                  } else if (default_ok && input.is_integer) {
-                    // Read a default number of arguments
-                    required_ok = false;
-                    optional_ok = false;
-                    rest_ok = false;
-                    default_ok = false;
-                    default_args = input.value;
-                    read_var();
-                  } else {
-                    f(logo.error(logo.ERR_DOESNT_LIKE, input.show()));
-                  }
-                }
-              })();
-            }
-          }
-        }
-      } else {
-        // Regular eval mode
-        logo.eval_loop(tokens, function(error, value) {
-            if (error) {
-              f(error);
-            } else if (tokens.length !== 0) {
-              f(logo.error(ERR_INTERNAL, "There should be no input left?!"));
-            } else {
-              f(undefined, true);
-            }
-          }, logo.$undefined.$new());
-      }
-    } catch (error) {
-      f(error);
-    }
-  };
-
-  // Create a procedure from its definition (name, arguments, source and tokens)
-  logo.make_procedure = function(definition)
-  {
-    var p = function(tokens, f)
-    {
-      var parent = logo.scope;
-      logo.scope = { parent: parent,
-        current_token: parent.current_token,
-        things: Object.create(parent.things),
-        in_parens: parent.in_parens,
-        procedure: true,
-        exit: function(error, value) {
-            logo.scope = parent;
-            if (error) {
-              f(error);
-            } else if (definition.is_macro) {
-              value.run(f);
-            } else {
-              logo.trace("& {0} (exited with value {1})"
-                  .fmt($scope(), value.show()));
-              f(error, value);
-            }
-          } };
-      // In parens read between min and max args, otherwise the default number
-      // of arguments. If we haven't read all arguments instantiate the ones
-      // that have not been read with the default expressions.
-      var min = logo.scope.in_parens ? definition.min_args :
-        definition.default_args;
-      var max = logo.scope.in_parens ? definition.max_args :
-        definition.default_args;
-      var n = definition.args.length;
-      var m = Math.max(max, n);
-      if (definition.max_args === Infinity) {
-        var arg_name = definition.args[n - 1][0].toUpperCase();
-        logo.scope.things[definition.args[n - 1][0].toUpperCase()] =
-          logo.list.$new();
-        logo.trace("& rest list {1}={2}".fmt($scope(), arg_name,
-            logo.scope.things[arg_name].show()));
-      }
-      logo.trace("& reading {1}-{2} argument{3}/{4}"
-          .fmt($scope(), min, max, max > 1 ? "s" : "", n));
-      (function eval_args(i) {
-        if (i < m) {
-          var j = Math.min(i, n - 1);
-          var arg_name = (definition.args[j] instanceof Array ?
-            definition.args[j][0] : definition.args[j]).toUpperCase();
-          var default_expr = definition.args[j] instanceof Array ?
-            definition.args[j][1] : null;
-          var rest = definition.args[j] instanceof Array && !default_expr;
-          logo.trace("& Getting arg #{1}/{2}: {3} ({4})".fmt($scope(), i,
-              j, arg_name, rest ? "regular" : "rest"));
-          var g = function(error, value)
-          {
-            if (error) {
-              f(error);
-            } else {
-              if (rest) {
-                logo.scope.things[arg_name].value.push(value);
-              } else {
-                logo.scope.things[arg_name] = value;
-              }
-              logo.trace("& {1}={2}".fmt($scope(), arg_name,
-                    logo.scope.things[arg_name].show()));
-              eval_args(i + 1);
-            }
-          };
-          if (i < min || (i < max && tokens.length > 0)) {
-            logo.trace("& normal arg");
-            logo.eval(tokens, g);
-          } else if (default_expr) {
-            logo.trace("& default arg");
-            default_expr.run(g);
-          } else {
-            logo.trace("& nothing left");
-            eval_args(m);
-          }
-        } else {
-          delete logo.scope.current_token;
-          var tokens_ = definition.tokens.slice(0);
-          logo.trace("& {0} <{1}>".fmt($scope(),
-              tokens_.map(function(x) { return x.show(); }).join(" ")));
-          logo.eval_loop(tokens_, function(error, value) {
-              if (error) {
-                f(error);
-              } else if (tokens_.length !== 0) {
-                f(logo.error(logo.ERR_INTERNAL,
-                    "There should be no input left?!"));
-              } else {
-                logo.scope.exit(undefined, value);
-              }
-            }, logo.$undefined.$new());
-        }
-      })(0);
-    };
-    p._source = definition.source;
-    return p;
-  };
-
-  // Read a function definition (after the title line, storing all tokens and
-  // stopping when the single token "END" is found)
-  logo.read_def = function(input, f)
-  {
-    if (!logo.current_def) {
-      f(logo.error(ERR_INTERNAL, "No current definition?!"));
-    }
-    try {
-      var tokens = logo.tokenize(input);
-      logo.current_def.source += "\n" + input;
-      if (tokens.length === 1 && tokens[0].is_procedure("END")) {
-        // End function definition mode
-        logo.procedures[logo.current_def.name.toUpperCase()] =
-          logo.make_procedure(logo.current_def);
-        logo.current_def = null;
-        f(undefined, true, []);
-      } else {
-        logo.current_def.tokens = logo.current_def.tokens.concat(tokens);
-        f(undefined, false, []);
-      }
-    } catch(e) {
-      f(e);
-    }
-  };
-
-  // Tokenize an input string an return a list of tokens
-  logo.tokenize = function(input)
-  {
-    var tokens = [];
-    var m;
-    var current_list = null;
-    var current_group = null;
-    var push_token = function(token)
-    {
-      if (current_list) {
-        current_list.value.push(token);
-      } else if (current_group) {
-        current_group.value.push(token);
-        if (current_group.value.length === 1) token.in_parens = true;
-      } else {
-        tokens.push(token);
-      }
-    }
-    while (input.length > 0) {
-      input = input.replace(/^\s+/, "");
-      if (m = input.match(/^\[/)) {
-        var l = logo.list.$new();
-        l.parent = current_list;
-        push_token(l);
-        current_list = l;
-      } else if (m = input.match(/^\]/)) {
-        if (current_list) {
-          current_list = current_list.parent;
-        } else {
-          throw logo.error(logo.ERR_UNEXPECTED_BRACKET);
-        }
-      } else if (current_list) {
-        m = input.match(/^([^\s\[\]\\]|(\\.))+/);
-        push_token(logo.new_word(m[0].replace(/\\(.)/g, "$1", m[0])));
-      } else if (m = input.match(/^\(/)) {
-        var g = logo.group.$new();
-        g.parent = current_group;
-        push_token(g);
-        current_group = g;
-      } else if (m = input.match(/^\)/)) {
-        if (current_group) {
-          current_group = current_group.parent;
-        } else {
-          throw logo.error(logo.ERR_UNEXPECTED_PAREN);
-        }
-      } else {
-        if (m = input.match(/^"((?:[^\s\[\]\(\);\\]|(?:\\.))*)/)) {
-          push_token(logo.new_word(m[1].replace(/\\(.)/g, "$1"), m[0]));
-        } else if (m = input
-            .match(/^((\d+(\.\d*)?)|(\d*\.\d+))(?=[\s\[\]\(\)+\-*\/=<>;]|$)/)) {
-          push_token(logo.new_word(m[0], m[0]));
-        } else if (m = input.match(/^\?(\d+)(?=[\s\[\]\(\)+\-*\/=<>;]|$)/)) {
-          var group = logo.group.$new();
-          var q = logo.procedure.$new("?");
-          q.in_parens = true;
-          group.value.push(q);
-          group.value.push(logo.new_word(m[1]));
-          push_token(group);
-        } else if (m = input
-            .match(/^(:?)((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/)) {
-          if (m[1] === ":") {
-            var group = logo.group.$new();
-            var thing = logo.procedure.$new("THING");
-            thing.in_parens = true;
-            group.value.push(thing);
-            group.value.push(logo.new_word(m[2].replace(/\\(.)/g, "$1"), m[0]));
-            logo.trace("THING: {{0}}".fmt(group.show()));
-            push_token(group);
-          } else {
-            push_token(logo.procedure
-                .$new(m[0].replace(/\\(.)/g, "$1").toUpperCase(), m[0]));
-          }
-        } else if (m = input.match(/^(<=|>=|<>|=|<|>)/)) {
-          push_token(logo.infix.$new(m[0], m[0], 1));
-        } else if (m = input.match(/^(\+|\-)/)) {
-          push_token(logo.infix.$new(m[0], m[0], 2));
-        } else if (m = input.match(/^(\*|\/)/)) {
-          push_token(logo.infix.$new(m[0], m[0], 3));
-        } else if (m = input.match(/./)) {
-          push_token(logo.new_word(m[0]));
-        }
-      }
-      if (m) input = input.substring(m[0].length);
-    }
-    logo.trace(", tokens: [{0}]".fmt(tokens.map($show).join(" ")));
-    return tokens;
   };
 
   // Create a word token of the correct type given the value (i.e. a word, a
@@ -1101,6 +1156,10 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_token(tokens, function(v) { f(undefined, v.butlast()); }, f);
     },
+
+    // BYE depends on the context in which Logo is run, so it has no effect by
+    // default.
+    BYE: function(tokens, f) { f(undefined, logo.$undefined.$new()); },
 
     // CONTENTS
     //   outputs a "contents list," i.e., a list of three lists containing
@@ -1809,6 +1868,25 @@ if (typeof exports === "object") populus = require("populus");
         }, f);
     },
 
+    // PARSE word
+	  //   outputs the list that would result if the input word were entered
+    //   in response to a READLIST operation.  That is, PARSE READWORD has
+    //   the same value as READLIST for the same characters read.
+    PARSE: function(tokens, f)
+    {
+      logo.eval_word(tokens, function(word) {
+          var list = "[" + word.value.replace(/~\n/g, "")
+              .replace(/((^|[^\\])(\\\\)*);/g, "$1\\;") + "]";
+          logo.tokenize(list, function(error, tokens) {
+              if (tokens.length === 1 && tokens[0].is_list) {
+                f(undefined, tokens[0]);
+              } else {
+                f(logo.error(logo.ERR_DOESNT_LIKE, "[{0}]".fmt(word.show())));
+              }
+            });
+        }, f);
+    },
+
     // POWER num1 num2
     //   outputs "num1" to the "num2" power.  If num1 is negative, then
     //   num2 must be an integer.
@@ -2036,19 +2114,59 @@ if (typeof exports === "object") populus = require("populus");
     //   TODO special characters
     READLIST: function(tokens, f)
     {
-      logo.read(function(input) {
-          try {
-            var list = logo.tokenize("[" + input + "]")[0];
-            if (list.is_list) {
-              f(undefined, list);
-            } else {
-              f(logo.error(logo.ERR_INTERNAL,
-                    "{1} is not a list?!".fmt($show(list))));
-            }
-          } catch(e) {
-            f(e);
-          }
+      logo.prompt(logo.PROMPT_READ, function(input) {
+          var list = "[" + input.replace(/((^|[^\\])(\\\\)*);/g, "$1\\;") + "]";
+          logo.tokenize(list, function(error, tokens) {
+              if (tokens.length === 1 && tokens[0].is_list) {
+                f(undefined, tokens[0]);
+              } else {
+                f(logo.error(logo.ERR_DOESNT_LIKE, "[{0}]".fmt(input)));
+              }
+            });
         });
+    },
+
+    // READRAWLINE
+    //   reads a line from the read stream and outputs that line as a word.
+    //   The output is a single word even if the line contains spaces,
+    //   brackets, etc.  If the read stream is a file, and the end of file is
+    //   reached, READRAWLINE outputs the empty list (not the empty word).
+    //   READRAWLINE outputs the exact string of characters as they appear
+    //   in the line, with no special meaning for backslash, vertical bar,
+    //   tilde, or any other formatting characters.
+    READRAWLINE: function(tokens, f)
+    {
+      logo.prompt_raw(logo.PROMPT_READ, function(line) {
+          f(undefined, logo.new_word(line));
+        });
+    },
+
+    // READWORD
+    // RW
+    //   reads a line from the read stream and outputs that line as a word.
+    //   The output is a single word even if the line contains spaces,
+    //   brackets, etc.  If the read stream is a file, and the end of file is
+    //   reached, READWORD outputs the empty list (not the empty word).
+    //   READWORD processes backslash, vertical bar, and tilde characters in
+    //   the read stream.  In the case of a tilde used for line continuation,
+    //   the output word DOES include the tilde and the newline characters, so
+    //   that the user program can tell exactly what the user entered.
+    //   Vertical bars in the line are also preserved in the output.
+    //   Backslash characters are not preserved in the output.
+    READWORD: function(tokens, f)
+    {
+      (function read(input)
+      {
+        logo.prompt_raw(logo.PROMPT_READ, function(line) {
+            var m = line.match(/(^|[^\\])(\\\\)*[~\\]$/);
+            if (m) {
+              read(input + line + "\n");
+            } else {
+              f(undefined,
+                logo.new_word((input + line).replace(/\\(.|\n)/g, "$1")));
+            }
+          });
+      })("");
     },
 
     // REMAINDER num1 num2
@@ -2125,6 +2243,26 @@ if (typeof exports === "object") populus = require("populus");
     RUN: function(tokens, f)
     {
       logo.eval_list(tokens, function(list) { list.run(f); }, f);
+    },
+
+    // RUNPARSE wordorlist
+    //   outputs the list that would result if the input word or list were
+    //   entered as an instruction line; characters such as infix operators
+    //   and parentheses are separate members of the output.  Note that
+    //   sublists of a runparsed list are not themselves runparsed.
+    RUNPARSE: function(tokens, f)
+    {
+      logo.eval_token(tokens, function(wordorlist) {
+          var list = "[" + wordorlist.toString().replace(/~\n/g, "")
+              .replace(/((^|[^\\])(\\\\)*);/g, "$1\\;") + "]";
+          logo.tokenize(list, function(error, tokens) {
+              if (tokens.length === 1 && tokens[0].is_list) {
+                f(undefined, tokens[0]);
+              } else {
+                f(logo.error(logo.ERR_DOESNT_LIKE, "[{0}]".fmt(word.show())));
+              }
+            });
+        }, f);
     },
 
     // RUNRESULT instructionlist
