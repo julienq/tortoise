@@ -1864,6 +1864,25 @@ if (typeof exports === "object") populus = require("populus");
         }, f);
     },
 
+    // PARSE word
+	  //   outputs the list that would result if the input word were entered
+    //   in response to a READLIST operation.  That is, PARSE READWORD has
+    //   the same value as READLIST for the same characters read.
+    PARSE: function(tokens, f)
+    {
+      logo.eval_word(tokens, function(word) {
+          var list = "[" + word.value.replace(/~\n/g, "")
+              .replace(/((^|[^\\])(\\\\)*);/g, "$1\\;") + "]";
+          logo.tokenize(list, function(error, tokens) {
+              if (tokens.length === 1 && tokens[0].is_list) {
+                f(undefined, tokens[0]);
+              } else {
+                f(logo.error(logo.ERR_DOESNT_LIKE, "[{0}]".fmt(word.show())));
+              }
+            });
+        }, f);
+    },
+
     // POWER num1 num2
     //   outputs "num1" to the "num2" power.  If num1 is negative, then
     //   num2 must be an integer.
@@ -2220,6 +2239,26 @@ if (typeof exports === "object") populus = require("populus");
     RUN: function(tokens, f)
     {
       logo.eval_list(tokens, function(list) { list.run(f); }, f);
+    },
+
+    // RUNPARSE wordorlist
+    //   outputs the list that would result if the input word or list were
+    //   entered as an instruction line; characters such as infix operators
+    //   and parentheses are separate members of the output.  Note that
+    //   sublists of a runparsed list are not themselves runparsed.
+    RUNPARSE: function(tokens, f)
+    {
+      logo.eval_token(tokens, function(wordorlist) {
+          var list = "[" + wordorlist.toString().replace(/~\n/g, "")
+              .replace(/((^|[^\\])(\\\\)*);/g, "$1\\;") + "]";
+          logo.tokenize(list, function(error, tokens) {
+              if (tokens.length === 1 && tokens[0].is_list) {
+                f(undefined, tokens[0]);
+              } else {
+                f(logo.error(logo.ERR_DOESNT_LIKE, "[{0}]".fmt(word.show())));
+              }
+            });
+        }, f);
     },
 
     // RUNRESULT instructionlist
