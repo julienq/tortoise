@@ -17,6 +17,26 @@ logo.canvas_turtle = logo.turtle.create({
       return self;
     },
 
+    // Predefined colors
+    COLORS: [
+        "#000", // 0 black
+        "#00f", // 1 blue
+        "#0f0", // 2 green
+        "#0ff", // 3 cyan
+        "#f00", // 4 red
+        "#f0f", // 5 magenta
+        "#ff0", // 6 yellow
+        "#fff", // 7 white
+        // 8 brown
+        // 9 tan
+        // 10 forest
+        // 11 aqua
+        // 12 salmon
+        // 13 purple
+        // 14 orange
+        // 15 grey
+      ],
+
     clean: function()
     {
       var W = this.bg.canvas.width;
@@ -41,11 +61,13 @@ logo.canvas_turtle = logo.turtle.create({
       this.fg.stroke();
     },
 
-    home: function()
+    home: function() { this.set_position_heading(0, 0, 0); },
+
+    set_position_head: function(x, y, heading)
     {
-      this.x = 0;
-      this.y = 0;
-      this.heading = 0;
+      this.x = x;
+      this.y = y;
+      this.heading = heading;
     },
 
     turn: function(incr) { this.heading += incr; },
@@ -132,6 +154,15 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
         turtle.turn(degrees.value);
         f(undefined, logo.$undefined.$new());
       }, f);
+  };
+
+  // SETPOS pos
+	//   moves the turtle to an absolute position in the graphics window.  The
+	//   input is a list of two numbers, the X and Y coordinates.
+  logo.procedure.SETPOS = function(tokens, f)
+  {
+   // logo.eval_list(tokens, function(pos) {
+   //   }, f);
   };
 
   return turtle;
