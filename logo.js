@@ -10,6 +10,7 @@ if (typeof exports === "object") populus = require("populus");
   logo.PROMPT_DEFINE = "> ";      // function definition
   logo.PROMPT_CONTINUE = "~ ";    // continue (after ~ or inside brackets)
   logo.PROMPT_BACKSLASH = "\\ ";  // continue (after \)
+  logo.PROMPT_READ = "";          // no prompt for READLIST, READWORD, etc.
 
   // Prompt for a line, handling the ~ character
   // The REPL needs to define prompt_raw, which prompts for a single line and
@@ -612,18 +613,19 @@ if (typeof exports === "object") populus = require("populus");
 
       // Evaluate the list as a list of tokens
       run: function(f) {
-          try {
-            var tokens = logo.tokenize(this.toString());
-            (function loop(val) {
-              if (tokens.length === 0) {
-                f(undefined, val);
+          logo.tokenize(this.toString(), function(error, tokens) {
+              if (error) {
+                f(error)
               } else {
-                logo.eval_token(tokens, loop, f);
+                (function loop(val) {
+                  if (tokens.length === 0) {
+                    f(undefined, val);
+                  } else {
+                    logo.eval_token(tokens, loop, f);
+                  }
+                })(logo.$undefined.$new());
               }
-            })(logo.$undefined.$new());
-          } catch(e) {
-            f(e);
-          }
+            });
         },
 
       show: function() { return "[" + this.toString() + "]"; },
@@ -2089,18 +2091,15 @@ if (typeof exports === "object") populus = require("populus");
     //   TODO special characters
     READLIST: function(tokens, f)
     {
-      logo.read(function(input) {
-          try {
-            var list = logo.tokenize("[" + input + "]")[0];
-            if (list.is_list) {
-              f(undefined, list);
-            } else {
-              f(logo.error(logo.ERR_INTERNAL,
-                    "{1} is not a list?!".fmt($show(list))));
-            }
-          } catch(e) {
-            f(e);
-          }
+      logo.prompt(logo.PROMPT_READ, function(input) {
+          var list = "[" + input.replace(/((^|[^\\])(\\\\)*);/g, "$1\\;") + "]";
+          logo.tokenize(list, function(error, tokens) {
+              if (tokens.length === 1 && tokens[0].is_list) {
+                f(undefined, tokens[0]);
+              } else {
+                f(logo.error(logo.ERR_DOESNT_LIKE, "[{0}]".fmt(input)));
+              }
+            });
         });
     },
 
@@ -2118,7 +2117,18 @@ if (typeof exports === "object") populus = require("populus");
     //   Backslash characters are not preserved in the output.
     READWORD: function(tokens, f)
     {
-
+      (function read(input)
+      {
+        logo.prompt_raw(logo.PROMPT_READ, function(line) {
+            var m = line.match(/(^|[^\\])(\\\\)*[~\\]$/);
+            if (m) {
+              read(input + line + "\n");
+            } else {
+              f(undefined,
+                logo.new_word((input + line).replace(/\\(.|\n)/g, "$1")));
+            }
+          });
+      })("");
     },
 
     // REMAINDER num1 num2
