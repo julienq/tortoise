@@ -65,7 +65,7 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
   {
     logo.eval_number(tokens, function(dist) {
         turtle.forward(-dist.value);
-        f(undefined, logo.token());
+        f(undefined, logo.$undefined.$new());
       }, f);
   };
 
@@ -75,7 +75,7 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
   logo.procedures.CLEAN = function(tokens, f)
   {
     turtle.clean();
-    f(undefined, logo.token());
+    f(undefined, logo.$undefined.$new());
   };
 
   // FORWARD dist
@@ -86,7 +86,7 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
   {
     logo.eval_number(tokens, function(dist) {
         turtle.forward(dist.value);
-        f(undefined, logo.token());
+        f(undefined, logo.$undefined.$new());
       }, f);
   };
 
@@ -96,7 +96,7 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
   logo.procedures.HOME = function(tokens, f)
   {
     turtle.home();
-    f(undefined, logo.token());
+    f(undefined, logo.$undefined.$new());
   };
 
   // LEFT degrees
@@ -107,7 +107,7 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
   {
     logo.eval_number(tokens, function(degrees) {
         turtle.turn(-degrees.value);
-        f(undefined, logo.token());
+        f(undefined, logo.$undefined.$new());
       }, f);
   };
 
@@ -130,7 +130,7 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
   {
     logo.eval_number(tokens, function(degrees) {
         turtle.turn(degrees.value);
-        f(undefined, logo.token());
+        f(undefined, logo.$undefined.$new());
       }, f);
   };
 
