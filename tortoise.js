@@ -10,9 +10,6 @@ var LIB = "./library.logo";
 var TRACE = false;
 var SEED = 0;
 var HELP = false;
-var PROMPT = { eval: "? ", cont: "~ ", define: "> ", logo: "" };
-var MODE = "eval";
-var RLI = null;
 
 // Line being read (in case of ~ it will span several calls to eval_line)
 var current_line = "";
@@ -64,6 +61,7 @@ function show_help(node, name)
   process.exit(0);
 }
 
+var RLI;
 var lines = [];
 
 // Prompt for a single line of input
@@ -112,12 +110,8 @@ if (LIB) {
         if (lines.length > 0) {
           logo.eval_input(lines.shift(), function(error, value) {
             if (error) {
-              if (error.error_code) {
-                console.log("Error #{0}: {1}"
-                  .fmt(error.error_code, error.message));
-              } else {
-                throw error;
-              }
+              console.log("Error #{0}: {1}"
+                .fmt(error.error_code, error.message));
             }
             eval();
           });

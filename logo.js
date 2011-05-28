@@ -1159,7 +1159,7 @@ if (typeof exports === "object") populus = require("populus");
 
     // BYE depends on the context in which Logo is run, so it has no effect by
     // default.
-    BYE: function(tokens, f) { f(undefined, logo.$undefined.$new); },
+    BYE: function(tokens, f) { f(undefined, logo.$undefined.$new()); },
 
     // CONTENTS
     //   outputs a "contents list," i.e., a list of three lists containing

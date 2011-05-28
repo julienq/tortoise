@@ -11,7 +11,19 @@ logo.prompt_raw = function(p, f)
   if (lines.length > 0) {
     f(lines.shift());
   } else {
-
+    function read_once(e)
+    {
+      if (e.keyCode === 13) {
+        cmdline.removeEventListener("keydown", read_once, false);
+        e.preventDefault();
+        var input = cmdline.value;
+        cmdline.value = "";
+        logo.print(input, "cmd");
+        f(input);
+      }
+    }
+    // logo.print(p);
+    cmdline.addEventListener("keydown", read_once, false);
   }
 };
 
@@ -71,21 +83,30 @@ logo.init_canvas_turtle(document.getElementById("canvas_bg"),
   document.getElementById("canvas_fg"),
   document.getElementById("canvas_active"));
 
+function repl()
+{
+  for (var p in logo.procedures) logo.procedures[p].primitive = true;
+  cmdline.focus();
+  (function eval(error, value)
+  {
+    if (error) {
+      if (error.error_code) {
+        logo.print("Error #{0}: {1}".fmt(error.error_code, error.message),
+          "error");
+      } else {
+        throw error;
+      }
+    }
+    logo.eval_line(eval);
+  })();
+}
+
 var scripts = ["library.logo", "turtle.logo"];
 (function eval_scripts()
 {
   if (scripts.length > 0) {
     eval_script(scripts.shift(), eval_scripts);
   } else {
-    cmdline.addEventListener("keydown", function(e) {
-        if (e.keyCode === 13) {
-          e.preventDefault();
-          var input = cmdline.value;
-          cmdline.value = "";
-          logo.print(input, "cmd");
-          eval_input(input, function() {});
-        }
-      }, false);
-    cmdline.focus();
+    repl();
   }
 })();
