@@ -95,7 +95,7 @@ if (typeof exports === "object") populus = require("populus");
           if (state.current_list) {
             state.current_list = state.current_list.parent;
           } else {
-            state.push_token(logo.error(logo.ERR_UNEXPECTED_BRACKET));
+            state.push_token(logo.error.$new("UNEXPECTED_BRACKET"));
           }
         } else if (state.current_list) {
           m = input.match(/^([^\s\[\]\\]|(\\.))+/);
@@ -109,7 +109,7 @@ if (typeof exports === "object") populus = require("populus");
           if (state.current_group) {
             state.current_group = state.current_group.parent;
           } else {
-            state.push_token(logo.error(logo.ERR_UNEXPECTED_PAREN));
+            state.push_token(logo.error.$new("UNEXPECTED_PAREN"));
           }
         } else {
           if (m = input.match(/^"((?:[^\s\[\]\(\);\\]|(?:\\.))*)/)) {
@@ -153,7 +153,7 @@ if (typeof exports === "object") populus = require("populus");
         if (m) {
           logo.tokenize(input.substring(m[0].length), f, state);
         } else {
-          f(logo.error(logo.ERR_UNEXPECTED_INPUT, input));
+          f(logo.error.$new("UNEXPECTED_INPUT", input));
         }
       }
     } else if (state.current_group || state.current_list) {
@@ -172,7 +172,8 @@ if (typeof exports === "object") populus = require("populus");
         if (error) {
           f(error);
         } else if (tokens.length !== 0) {
-          f(logo.error(ERR_INTERNAL, "There should be no input left?!"));
+          f(logo.error.$new("INTERNAL_ERROR",
+              "There should be no input left?!"));
         } else {
           f(undefined, value);
         }
@@ -190,9 +191,9 @@ if (typeof exports === "object") populus = require("populus");
       // Read the name of the procedure
       var name = tokens.shift();
       if (!name.is_a(logo.procedure)) {
-        f(logo.error(logo.ERR_DOESNT_LIKE, name.show()));
+        f(logo.error.$new("DOESNT_LIKE", name.show()));
       } else if (name.value.toUpperCase() in logo.procedures) {
-        f(logo.error(logo.ERR_ALREADY_DEFINED, name.show()));
+        f(logo.error.$new("ALREADY_DEFINED", name.show()));
       } else {
         var required_ok = true;  // can read required inputs (THING "x)
         var optional_ok = true;  // can read optional inputs [:x "y]
@@ -227,7 +228,7 @@ if (typeof exports === "object") populus = require("populus");
                 required_ok = false;
                 read_var();
               } else {
-                f(logo.error(logo.ERR_DOESNT_LIKE, input.show()));
+                f(logo.error.$new("DOESNT_LIKE", input.show()));
               }
             } else if (rest_ok && input.is_list &&
                 input.value.length === 1) {
@@ -242,7 +243,7 @@ if (typeof exports === "object") populus = require("populus");
                 rest_ok = false;
                 read_var();
               } else {
-                f(logo.error(logo.ERR_DOESNT_LIKE, input.show()));
+                f(logo.error.$new("DOESNT_LIKE", input.show()));
               }
             } else if (default_ok && input.is_integer) {
               // Read a default number of arguments
@@ -253,7 +254,7 @@ if (typeof exports === "object") populus = require("populus");
               default_args = input.value;
               read_var();
             } else {
-              f(logo.error(logo.ERR_DOESNT_LIKE, input.show()));
+              f(logo.error.$new("DOESNT_LIKE", input.show()));
             }
           }
         })();
@@ -368,7 +369,7 @@ if (typeof exports === "object") populus = require("populus");
               if (error) {
                 f(error);
               } else if (tokens_.length !== 0) {
-                f(logo.error(logo.ERR_INTERNAL,
+                f(logo.error.$new("INTERNAL_ERROR",
                     "There should be no input left?!"));
               } else {
                 logo.scope.exit(undefined, value);
@@ -438,14 +439,58 @@ if (typeof exports === "object") populus = require("populus");
       butfirst: function() { return this; },
       butlast: function() { return this; },
       equalp: function(t) { return false; },
-      fput: function() { return this; },
+      fput: function(_, f) {
+          f(logo.error.$new("DOESNT_LIKE", this.show()));
+        },
       is_procedure: function() { return false; },
       item: function(i) { return this; },
-      lput: function() { return this; },
-      run: function(f) { f(logo.error(logo.ERR_DOESNT_LIKE, this.show())); },
+      lput: function(_, f) {
+          f(logo.error.$new("DOESNT_LIKE", this.show()));
+        },
+      run: function(f) {
+          f(logo.error.$new("DOESNT_LIKE", this.show()));
+        },
       show: function(surface) { return "*undefined*"; },
       toString: function() { return "*undefined*"; }
     });
+
+  // An error
+  logo.error = logo.$undefined.create({
+
+      init: function(short_string)
+      {
+        var self = this.call_super("init");
+        var msg = this.error_messages[short_string] ||
+          this.error_messages.UNKNOWN_ERROR;
+        var args = Array.prototype.slice.call(arguments, 1);
+        args.unshift($show(logo.scope.current_token));
+        self.message = String.prototype.fmt.apply(msg, args);
+        return self;
+      },
+
+      apply: function(tokens, f) { f(this); },
+      show: function() { return this.message },
+      toString: function() { return this.message },
+
+      error_messages: {
+        ALREADY_DEFINED: "{1} is already defined",
+        ASSUMING_IF_ELSE: "Assuming you mean IFELSE, not IF",
+        CANT_USE_HERE: "Can't use {0} here",
+        DOESNT_LIKE: "{0} doesn't like {1} as input",
+        HOW_TO: "I don't know how to {1}",
+        INTERNAL_ERROR: "Internal error: {1}",
+        IS_A_PRIMITIVE: "{1} is a primitive",
+        NO_TEST: "{0} without TEST",
+        NO_VAR: "{1} has no value",
+        NOT_ENOUGH_INPUTS: "Not enough inputs to {1}",
+        TOO_MUCH_INSIDE_PARENS: "Too much inside ()'s",
+        UNEXPECTED_BRACKET: 'Unexpected "]"',
+        UNEXPECTED_INPUT: 'Unexpected input: "{1}"',
+        UNEXPECTED_PAREN: 'Unexpected ")"',
+        UNKNOWN_ERROR: "Unknown error",
+        WHAT_TO_DO: "I don't say what to do with {1}",
+      },
+  });
 
 
   // A Logo word
@@ -468,11 +513,11 @@ if (typeof exports === "object") populus = require("populus");
       count: { enumerable: true, configurable: true,
           get: function() { return this.toString().length; } },
       equalp: function(t) { return this.is_word && this.value === t.value; },
-      fput: function(thing) {
+      fput: function(thing, f) {
           if (thing.is_word && thing.toString().length === 1) {
-            return logo.new_word(thing.toString() + this.toString());
+            f(undefined, logo.new_word(thing.toString() + this.toString()));
           } else {
-            throw logo.error(logo.ERR_DOESNT_LIKE, $show(thing));
+            f(logo.error.$new("DOESNT_LIKE", thing.show()));
           }
         },
       is_datum: true,
@@ -481,11 +526,11 @@ if (typeof exports === "object") populus = require("populus");
       item: function(i) {
           return logo.new_word(this.toString().substr(i - 1, 1));
         },
-      lput: function(thing) {
+      lput: function(thing, f) {
           if (thing.is_word && thing.value.length === 1) {
-            return logo.new_word(this.toString() + thing.toString());
+            f(undefined, logo.new_word(this.toString() + thing.toString()));
           } else {
-            throw logo.error(logo.ERR_DOESNT_LIKE, $show(thing));
+            f(logo.error.$new("DOESNT_LIKE", this.show()));
           }
         },
       show: function(surface) {
@@ -548,7 +593,7 @@ if (typeof exports === "object") populus = require("populus");
               f(error, value);
             });
         } else {
-          f(logo.error(logo.ERR_HOW_TO, this.show()));
+          f(logo.error.$new("HOW_TO", this.show()));
         }
       },
 
@@ -598,20 +643,20 @@ if (typeof exports === "object") populus = require("populus");
             }
           })(this, token);
         },
-      fput: function(t) {
+      fput: function(t, f) {
           var list = logo.list.$new();
           list.value = this.value.slice(0);
           list.value.unshift(t);
-          return list;
+          f(undefined, list);
         },
       is_list: true,
       is_word: false,
       item: function(i) { return this.value[i - 1]; },
-      lput: function(t) {
+      lput: function(t, f) {
           var list = logo.list.$new();
           list.value = this.value.slice(0);
           list.value.push(t);
-          return list;
+          f(undefined, list);
         },
 
       // Evaluate the list as a list of tokens
@@ -659,7 +704,7 @@ if (typeof exports === "object") populus = require("populus");
                 if (error || tokens_.length === 0) {
                   f(error, value);
                 } else {
-                  f(logo.error(logo.ERR_TOO_MUCH_PARENS));
+                  f(logo.error.$new("TOO_MUCH_INSIDE_PARENS"));
                 }
               });
           } else {
@@ -673,61 +718,6 @@ if (typeof exports === "object") populus = require("populus");
           } },
       show: function() { return "(" + this.call_super("show") + ")"; },
     });
-
-
-  // Make an error object from the given error code and additional arguments.
-  // The first argument is implied to be the current procedure (if any.) An
-  // error object has a code and a message field.
-  logo.error = function(code)
-  {
-    var msg = logo.error_messages[code] || "Unknown error ({0})".fmt(code);
-    var args = Array.prototype.slice.call(arguments, 1);
-    // Add the current word to the list of argument
-    args.unshift($show(logo.scope.current_token));
-    return { error_code: code, message: String.prototype.fmt.apply(msg, args),
-      apply: function(_, f) { f(this); } };
-  };
-
-  // Error messages; first argument is always the name of current work being
-  // evaluted, other arguments are passed to the logo.error constructor
-  logo.ERR_INTERNAL = 0;
-  logo.ERR_STACK_OVERFLOW = 2;
-  logo.ERR_DOESNT_LIKE = 4;
-  logo.ERR_NOT_ENOUGH_INPUT = 6;
-  logo.ERR_TOO_MUCH_PARENS = 8;
-  logo.ERR_WHAT_TO_DO = 9;
-  logo.ERR_NO_VAR = 11;
-  logo.ERR_UNEXPECTED_PAREN = 12;
-  logo.ERR_HOW_TO = 13;
-  logo.ERR_ALREADY_DEFINED = 15;
-  logo.ERR_ASSUMING_IFELSE = 19;
-  logo.ERR_IS_A_PRIMITIVE = 22;
-  logo.ERR_CANT_USE_HERE = 23;
-  logo.ERR_HOW_TO_FATAL = 24;
-  logo.ERR_NO_TEST = 25;
-  logo.ERR_UNEXPECTED_BRACKET = 26;
-  logo.ERR_UNEXPECTED_INPUT = 101;
-
-  logo.error_messages = [];
-  logo.error_messages[logo.ERR_INTERNAL] = "Fatal internal error ({1})";
-  logo.error_messages[logo.ERR_STACK_OVERFLOW] = "Stack overflow";
-  logo.error_messages[logo.ERR_DOESNT_LIKE] = "{0} doesn't like {1} as input";
-  logo.error_messages[logo.ERR_NOT_ENOUGH_INPUT] = "Not enough inputs to {0}";
-  logo.error_messages[logo.ERR_TOO_MUCH_PARENS] = "Too much inside ()'s";
-  logo.error_messages[logo.ERR_NO_VAR] = "{1} has no value";
-  logo.error_messages[logo.ERR_UNEXPECTED_PAREN] = "Unexpected \")\"";
-  logo.error_messages[logo.ERR_WHAT_TO_DO] =
-    "You don't say what to do with {1}";
-  logo.error_messages[logo.ERR_ASSUMING_IFELSE] =
-    "Assuming you mean IFELSE, not IF";
-  logo.error_messages[logo.ERR_IS_A_PRIMITIVE] = "{1} is a primitive";
-  logo.error_messages[logo.ERR_CANT_USE_HERE] = "Can't use {0} here";
-  logo.error_messages[logo.ERR_HOW_TO] =
-  logo.error_messages[logo.ERR_HOW_TO_FATAL] = "I don't know how to {1}";
-  logo.error_messages[logo.ERR_ALREADY_DEFINED] = "{1} is already defined";
-  logo.error_messages[logo.ERR_NO_TEST] = "{0} without TEST";
-  logo.error_messages[logo.ERR_UNEXPECTED_BRACKET] = "Unexpected \"]\"";
-  logo.error_messages[logo.ERR_UNEXPECTED_INPUT] = "Unexpected input: \"{1}\"";
 
 
   // Eval the first token of a list of tokens. The token will then consume the
@@ -748,7 +738,7 @@ if (typeof exports === "object") populus = require("populus");
                 if (error) {
                   f(error);
                 } else if (value_.is_datum && !logo.scope.current_token) {
-                  f(logo.error(logo.ERR_WHAT_TO_DO, value_.show()));
+                  f(logo.error.$new("WHAT_TO_DO", value_.show()));
                 } else {
                   logo.trace("} {0} after swap: {1}"
                     .fmt($scope(), value_.show()));
@@ -758,7 +748,7 @@ if (typeof exports === "object") populus = require("populus");
           }
         });
     } else {
-      f(logo.error(logo.ERR_NOT_ENOUGH_INPUT));
+      f(logo.error.$new("NOT_ENOUGH_INPUTS"));
     }
   };
 
@@ -827,7 +817,7 @@ if (typeof exports === "object") populus = require("populus");
           }
         });
     } else {
-      f(logo.error(logo.ERR_DOESNT_LIKE, $show(tf)));
+      f(logo.error.$new("DOESNT_LIKE", tf.show()));
     }
   };
 
@@ -863,7 +853,7 @@ if (typeof exports === "object") populus = require("populus");
               if (error) {
                 f(error);
               } else if (!p(value)) {
-                f(logo.error(logo.ERR_DOESNT_LIKE, $show(value)));
+                f(logo.error.$new("DOESNT_LIKE", value.show()));
               } else {
                 g(value);
               }
@@ -943,7 +933,7 @@ if (typeof exports === "object") populus = require("populus");
   function if_test(tokens, f, p)
   {
     if (typeof logo.scope.test !== "boolean") {
-      f(logo.error(logo.ERR_NO_TEST));
+      f(logo.error.$new("NO_TEST"));
     } else {
       logo.eval_token(tokens, function(list) {
           if (logo.scope.test !== p) {
@@ -1077,7 +1067,7 @@ if (typeof exports === "object") populus = require("populus");
                   template.run(logo.scope.exit);
                 }
               } else {
-                f(logo.error(logo.ERR_DOESNT_LIKE(template.show())));
+                f(logo.error.$new("DOESNT_LIKE", template.show()));
               }
             }, f);
         }, f);
@@ -1124,10 +1114,10 @@ if (typeof exports === "object") populus = require("populus");
     //   list.  It is an error if any member of the input list is empty or an
     //   array.  (The input itself may be empty, in which case the output is
     //   also empty.)  This could be written as
-		//     to butfirsts :list
+    //     to butfirsts :list
     //     output map "butfirst :list
     //     end
-	  //   but is provided as a primitive in order to speed up the iteration
+    //   but is provided as a primitive in order to speed up the iteration
     //   tools MAP, MAP.SE, and FOREACH.
     BUTFIRSTS: function(tokens, f)
     {
@@ -1137,7 +1127,7 @@ if (typeof exports === "object") populus = require("populus");
           for (var i = 0, n = list.value.length, error; i < n && !error; ++i) {
             var v = list.value[i];
             if (typeof v.count !== "number" || v.count === 0) {
-              error = logo.error(logo.ERR_DOESNT_LIKE, $show(v));
+              error = logo.error.$new("DOESNT_LIKE", v.show());
             } else {
               bfs.value.push(v.butfirst());
             }
@@ -1200,13 +1190,13 @@ if (typeof exports === "object") populus = require("populus");
       logo.eval_word(tokens, function(newname) {
           var n = newname.value.toUpperCase();
           if (n in logo.procedures && n.primitive) {
-            f(logo.error(logo.ERR_ALREADY_DEFINED, $show(newname)));
+            f(logo.error.$new("ALREADY_DEFINED", newname.show()));
           } else {
             logo.eval_word(tokens, function(oldname) {
                 var o = oldname.value.toUpperCase();
                 var p = logo.procedures[o];
                 if (!p) {
-                  f(logo.error(logo.ERR_HOW_TO_FATAL, $show(oldname)));
+                  f(logo.error.$new("HOW_TO", oldname.show()));
                 } else {
                   logo.procedures[n] = p;
                   f(undefined, logo.$undefined.$new());
@@ -1332,13 +1322,13 @@ if (typeof exports === "object") populus = require("populus");
           } else {
             var p = procedures.value.shift();
             if (!p.is_word) {
-              f(logo.error(logo.ERR_DOESNT_LIKE, $show(p)));
+              f(logo.error.$new("DOESNT_LIKE", p.show()));
             } else {
               var p_ = logo.procedures[p.value.toUpperCase()];
               if (!p_) {
-                logo.warn(logo.error(logo.ERR_DOESNT_LIKE, $show(p)));
+                logo.warn(logo.error.$new("DOESNT_LIKE", p.show()));
               } else if (p_.primitive) {
-                logo.warn(logo.error(logo.ERR_IS_A_PRIMITIVE, $show(p)));
+                logo.warn(logo.error.$new("IS_A_PRIMITIVE", p.show()));
               } else {
                 delete logo.procedures[p.value.toUpperCase()];
               }
@@ -1409,7 +1399,7 @@ if (typeof exports === "object") populus = require("populus");
           for (var i = 0, n = list.value.length, error; i < n && !error; ++i) {
             var v = list.value[i];
             if (typeof v.count !== "number" || v.count === 0) {
-              error = logo.error(logo.ERR_DOESNT_LIKE, $show(v));
+              error = logo.error.$new("DOESNT_LIKE", v.show());
             } else {
               firsts.value.push(v.item(1));
             }
@@ -1438,9 +1428,7 @@ if (typeof exports === "object") populus = require("populus");
     FPUT: function(tokens, f)
     {
       logo.eval_token(tokens, function(thing) {
-          logo.eval_token(tokens, function(list) {
-              f(undefined, list.fput(thing));
-            }, f);
+          logo.eval_token(tokens, function(list) { list.fput(thing, f); }, f);
         }, f);
     },
 
@@ -1492,7 +1480,7 @@ if (typeof exports === "object") populus = require("populus");
               if ((logo.scope.in_parens && tokens.length > 0 ||
                   tokens.length > 0 && tokens[0].is_list)) {
                 if (!logo.scope.in_parens) {
-                  logo.warn(logo.error(logo.ERR_ASSUMING_IFELSE));
+                  logo.warn(logo.error.$new("ASSUMING_IF_ELSE"));
                 }
                 logo.eval_list(tokens, function(list_else) {
                     if (tf.is_true) {
@@ -1679,7 +1667,7 @@ if (typeof exports === "object") populus = require("populus");
         } else {
           var varname = varnames.shift();
           if (!varname.is_word) {
-            f(logo.error(logo.ERR_DOESNT_LIKE, $show(varname)));
+            f(logo.error.$new("DOESNT_LIKE", varname.show()));
           } else {
             logo.scope.things[varname.toString().toUpperCase()] = null;
             local();
@@ -1714,9 +1702,7 @@ if (typeof exports === "object") populus = require("populus");
     LPUT: function(tokens, f)
     {
       logo.eval_token(tokens, function(thing) {
-          logo.eval_token(tokens, function(list) {
-              f(undefined, list.lput(thing));
-            }, f);
+          logo.eval_token(tokens, function(list) { list.lput(thing, f); }, f);
         }, f);
     },
 
@@ -1872,7 +1858,7 @@ if (typeof exports === "object") populus = require("populus");
     },
 
     // PARSE word
-	  //   outputs the list that would result if the input word were entered
+    //   outputs the list that would result if the input word were entered
     //   in response to a READLIST operation.  That is, PARSE READWORD has
     //   the same value as READLIST for the same characters read.
     PARSE: function(tokens, f)
@@ -1884,7 +1870,7 @@ if (typeof exports === "object") populus = require("populus");
               if (tokens.length === 1 && tokens[0].is_list) {
                 f(undefined, tokens[0]);
               } else {
-                f(logo.error(logo.ERR_DOESNT_LIKE, "[{0}]".fmt(word.show())));
+                f(logo.error.$new("DOESNT_LIKE", "[{0}]".fmt(word.show())));
               }
             });
         }, f);
@@ -1943,7 +1929,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_slurp(tokens, function(n, product, g) {
           if (!n.is_number) {
-            g(logo.error(logo.ERR_DOESNT_LIKE, $show(n)));
+            g(logo.error.$new("DOESNT_LIKE", n.show()));
           } else {
             g(undefined, logo.new_word(n.value * product.value));
           }
@@ -2086,7 +2072,7 @@ if (typeof exports === "object") populus = require("populus");
         logo.eval_integer(tokens, function(start) {
             logo.eval_integer(tokens, function(end) {
                 if (end.value - start.value < 0) {
-                  f(logo.error(logo.ERR_DOESNT_LIKE, $show(start)));
+                  f(logo.error.$new("DOESNT_LIKE", start.show()));
                 } else {
                   f(undefined, logo.new_word(MERSENNE_TWISTER
                       .next_integer(start.value, end.value + 1)));
@@ -2096,7 +2082,7 @@ if (typeof exports === "object") populus = require("populus");
       } else {
         logo.eval_integer(tokens, function(num) {
             if (num.value < 1) {
-              f(logo.error(logo.ERR_DOESNT_LIKE, $show(num)));
+              f(logo.error.$new("DOESNT_LIKE", num.show()));
             } else {
               f(undefined, logo
                 .new_word(MERSENNE_TWISTER.next_integer(num.value)));
@@ -2123,7 +2109,7 @@ if (typeof exports === "object") populus = require("populus");
               if (tokens.length === 1 && tokens[0].is_list) {
                 f(undefined, tokens[0]);
               } else {
-                f(logo.error(logo.ERR_DOESNT_LIKE, "[{0}]".fmt(input)));
+                f(logo.error.$new("DOESNT_LIKE", "[{0}]".fmt(input)));
               }
             });
         });
@@ -2262,7 +2248,7 @@ if (typeof exports === "object") populus = require("populus");
               if (tokens.length === 1 && tokens[0].is_list) {
                 f(undefined, tokens[0]);
               } else {
-                f(logo.error(logo.ERR_DOESNT_LIKE, "[{0}]".fmt(word.show())));
+                f(logo.error.$new("DOESNT_LIKE", "[{0}]".fmt(word.show())));
               }
             });
         }, f);
@@ -2337,7 +2323,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_number(tokens, function(num) {
           if (num.value < 0) {
-            f(logo.error(logo.ERR_DOESNT_LIKE, $show(num)));
+            f(logo.error.$new("DOESNT_LIKE", num.show()));
           } else {
             f(undefined, logo.new_word(Math.sqrt(num.value)));
           }
@@ -2361,7 +2347,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_slurp(tokens, function(n, sum, g) {
           if (!n.is_number) {
-            g(logo.error(logo.ERR_DOESNT_LIKE, $show(n)));
+            g(logo.error.$new("DOESNT_LIKE", n.show()));
           } else {
             g(undefined, logo.new_word(n.value + sum.value));
           }
@@ -2387,7 +2373,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_token(tokens, function(tf) {
           if (!(tf.is_true() || tf.is_false())) {
-            f(logo.error(logo.ERR_DOESNT_LIKE, $show(tf)));
+            f(logo.error.$new("DOESNT_LIKE", tf.show()));
           } else {
             logo.scope.test = tf.is_true;
             f(undefined, logo.$undefined.$new());
@@ -2410,13 +2396,13 @@ if (typeof exports === "object") populus = require("populus");
           if (val) {
             f(undefined, val);
           } else {
-            f(logo.error(logo.ERR_NO_VAR, $show(varname)));
+            f(logo.error.$new("NO_VAR", varname.show()));
           }
         }, f);
     },
 
     // TO is handled in a special manner
-    TO: function(tokens, f) { f(logo.error(logo.ERR_CANT_USE_HERE)); },
+    TO: function(tokens, f) { f(logo.error.$new("CANT_USE_HERE")); },
 
     // WAIT time
     //   command.  Delays further execution for "time" 60ths of a second.
@@ -2428,7 +2414,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_number(tokens, function(time) {
           if (time.value < 0) {
-            f(logo.error(logo.ERR_DOESNT_LIKE, $show(time)));
+            f(logo.error.$new("DOESNT_LIKE", time.show()));
           } else {
             setTimeout(function() { f(undefined, logo.$undefined.$new()); },
               time.value * 1000 / 60);
@@ -2443,7 +2429,7 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_slurp(tokens, function(v, w, g) {
           if (!v.is_word) {
-            g(logo.error(logo.ERR_DOESNT_LIKE, $show(v)));
+            g(logo.error.$new("DOESNT_LIKE", v.show()));
           } else {
             g(undefined, logo.new_word(w.toString() + v.toString()));
           }
@@ -2469,7 +2455,7 @@ if (typeof exports === "object") populus = require("populus");
           if (logo.scope.slots && logo.scope.slots[i]) {
             f(undefined, logo.scope.slots[i]);
           } else {
-            f(logo.error(logo.ERR_DOESNT_LIKE, index.show()));
+            f(logo.error.$new("DOESNT_LIKE", index.show()));
           }
         }, f);
     },

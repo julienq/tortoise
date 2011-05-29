@@ -16,28 +16,28 @@ logo.canvas_turtle = logo.turtle.create({
       self.active = active.getContext ? active.getContext("2d") : active;
       self.hidden = false;
       self.drawing = true;
-      self.color = "#fff";
+      self.color = "#ffffff";
       return self;
     },
 
-    // Predefined colors
+    // Predefined colors (using X11 as a reference)
     COLORS: [
-        "#000", // 0 black
-        "#00f", // 1 blue
-        "#0f0", // 2 green
-        "#0ff", // 3 cyan
-        "#f00", // 4 red
-        "#f0f", // 5 magenta
-        "#ff0", // 6 yellow
-        "#fff", // 7 white
-        // 8 brown
-        // 9 tan
-        // 10 forest
-        // 11 aqua
-        // 12 salmon
-        // 13 purple
-        // 14 orange
-        // 15 grey
+        "#000000", // 0 black
+        "#0000ff", // 1 blue
+        "#00ff00", // 2 green (X11: lime)
+        "#00ffff", // 3 cyan (X11: aqua)
+        "#ff0000", // 4 red
+        "#ff00ff", // 5 magenta (X11: fuchsia)
+        "#ffff00", // 6 yellow
+        "#ffffff", // 7 white
+        "#a52a2a", // 8 brown
+        "#d2b48c", // 9 tan
+        "#228b22", // 10 forest (X11: forestgreen)
+        "#7fffd4", // 11 aqua (X11: aquamarine)
+        "#fa8072", // 12 salmon
+        "#800080", // 13 purple
+        "#ffa500", // 14 orange
+        "#808080", // 15 grey (X11: gray)
       ],
 
     clean: function()
@@ -46,7 +46,6 @@ logo.canvas_turtle = logo.turtle.create({
       var H = this.bg.canvas.height;
       this.bg.fillRect(0, 0, W, H);
       this.fg.clearRect(0, 0, W, H);
-      this.fg.strokeStyle = "white";
     },
 
     // Draw the turtle at the current position/heading in its canvas
@@ -122,7 +121,7 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
   turtle = logo.canvas_turtle.$new(bg, fg, active, proto);
 
   // ARC angle radius
-	//   draws an arc of a circle, with the turtle at the center, with the
+  //   draws an arc of a circle, with the turtle at the center, with the
   //   specified radius, starting at the turtle's heading and extending
   //   clockwise through the specified angle.  The turtle does not move.
   logo.procedures.ARC = function(tokens, f)
@@ -215,7 +214,7 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
 
   // PENUP
   // PU
-	//   sets the pen's position to UP, without changing its mode.
+  //   sets the pen's position to UP, without changing its mode.
   logo.procedures.PENUP = function(tokens, f)
   {
     turtle.drawing = true;
@@ -247,7 +246,7 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
 
   // SETHEADING degrees
   // SETH degrees
-	//   turns the turtle to a new absolute heading.  The input is
+  //   turns the turtle to a new absolute heading.  The input is
   //   a number, the heading in degrees clockwise from the positive
   //   Y axis.
   logo.procedures.SETHEADING = function(tokens, f)
@@ -260,9 +259,9 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
 
   // SETPENCOLOR colornumber.or.rgblist
   // SETPC colornumber.or.rgblist
-	//   sets the pen color to the given number, which must be a nonnegative
-	//   integer.  (See colors above)
-	//   but other colors can be assigned to numbers by the PALETTE command.
+  //   sets the pen color to the given number, which must be a nonnegative
+  //   integer.  (See colors above)
+  //   but other colors can be assigned to numbers by the PALETTE command.
   //   Alternatively, sets the pen color to the given RGB values (a list of
   //   three nonnegative numbers less than 100 specifying the percent
   //   saturation of red, green, and blue in the desired color).
@@ -281,8 +280,8 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
   };
 
   // SETPOS pos
-	//   moves the turtle to an absolute position in the graphics window.  The
-	//   input is a list of two numbers, the X and Y coordinates.
+  //   moves the turtle to an absolute position in the graphics window.  The
+  //   input is a list of two numbers, the X and Y coordinates.
   logo.procedures.SETPOS = function(tokens, f)
   {
     logo.eval_list(tokens, function(pos) {
@@ -297,8 +296,8 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
   };
 
   // SETX xcor
-	//   moves the turtle horizontally from its old position to a new
-	//   absolute horizontal coordinate.  The input is the new X
+  //   moves the turtle horizontally from its old position to a new
+  //   absolute horizontal coordinate.  The input is the new X
   //   coordinate.
   logo.procedures.SETX = function(tokens, f)
   {
@@ -309,7 +308,7 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
   };
 
   // SETXY xcor ycor
-	//   moves the turtle to an absolute position in the graphics window.  The
+  //   moves the turtle to an absolute position in the graphics window.  The
   //   two inputs are numbers, the X and Y coordinates.
   logo.procedures.SETXY = function(tokens, f)
   {
@@ -322,7 +321,7 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
   };
 
   // SETY ycor
-	//   moves the turtle vertically from its old position to a new
+  //   moves the turtle vertically from its old position to a new
   //   absolute vertical coordinate.  The input is the new Y
   //   coordinate.
   logo.procedures.SETY = function(tokens, f)
@@ -335,7 +334,7 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
 
   // SHOWTURTLE
   // ST
-	//   makes the turtle visible.
+  //   makes the turtle visible.
   logo.procedures.SHOWTURTLE = function(tokens, f)
   {
     turtle.set_hidden(false);

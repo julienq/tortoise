@@ -31,8 +31,7 @@ logo.print = function(str) { process.stdout.write(str + "\n"); };
 // Node-specific implementation of warn for Logo
 logo.warn = function(warning)
 {
-  process.stderr.write("Warning #{0}: {1}\n".fmt(warning.error_code,
-        warning.message));
+  process.stderr.write("Warning: {0}\n".fmt(warning.message));
 };
 
 // Parse arguments from the command line
@@ -84,13 +83,7 @@ function repl()
   RLI.on("close", close);
   (function eval(error, value)
   {
-    if (error) {
-      if (error.error_code) {
-        console.log("Error #{0}: {1}".fmt(error.error_code, error.message));
-      } else {
-        throw error;
-      }
-    }
+    if (error) console.log("Error: {0}".fmt(error.message));
     logo.eval_line(eval);
   })();
 }
@@ -109,10 +102,7 @@ if (LIB) {
       (function eval() {
         if (lines.length > 0) {
           logo.eval_input(lines.shift(), function(error, value) {
-            if (error) {
-              console.log("Error #{0}: {1}"
-                .fmt(error.error_code, error.message));
-            }
+            if (error) console.log("Error: {0}".fmt(error.message));
             eval();
           });
         } else {

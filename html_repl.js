@@ -45,8 +45,7 @@ logo.print = function(str, c)
 // Node-specific implementation of warn for Logo
 logo.warn = function(warning)
 {
-  logo.print("Warning #{0}: {1}".fmt(warning.error_code, warning.message),
-      "warning");
+  logo.print("Warning: {0}".fmt(warning.message), "warning");
 };
 
 function eval_input(input, f)
@@ -55,10 +54,7 @@ function eval_input(input, f)
   (function eval() {
     if (lines.length > 0) {
       logo.eval_input(lines.shift(), function(error, value) {
-        if (error) {
-          logo.print("Error #{0}: {1}"
-            .fmt(error.error_code, error.message), "error");
-        }
+        if (error) logo.print("Error: {0}".fmt(error.message), "error");
         eval();
       });
     } else {
@@ -89,14 +85,7 @@ function repl()
   cmdline.focus();
   (function eval(error, value)
   {
-    if (error) {
-      if (error.error_code) {
-        logo.print("Error #{0}: {1}".fmt(error.error_code, error.message),
-          "error");
-      } else {
-        throw error;
-      }
-    }
+    if (error) logo.print("Error: {0}".fmt(error.message), "error");
     logo.eval_line(eval);
   })();
 }
