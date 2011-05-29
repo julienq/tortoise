@@ -8,12 +8,13 @@ logo.turtle = populus.object.create();
 
 logo.canvas_turtle = logo.turtle.create({
 
-    init: function(bg, fg, active, proto)
+    init: function(bg, fg, active)
     {
       var self = this.call_super("init");
       self.bg = bg.getContext ? bg.getContext("2d") : bg;
       self.fg = fg.getContext ? fg.getContext("2d") : fg;
       self.active = active.getContext ? active.getContext("2d") : active;
+      self.hidden = false;
       return self;
     },
 
@@ -46,6 +47,26 @@ logo.canvas_turtle = logo.turtle.create({
       this.fg.strokeStyle = "white";
     },
 
+    // Draw the turtle at the current position/heading in its canvas
+    draw_self: function()
+    {
+      var context = this.active;
+      var W = context.canvas.width / 2;
+      var H = context.canvas.height / 2;
+      context.clearRect(0, 0, W * 2, H * 2);
+      if (!this.hidden) {
+        context.save();
+        context.translate(this.x, -this.y);
+        context.beginPath();
+        context.moveTo(W - 12, H);
+        context.lineTo(W + 12, H);
+        context.lineTo(W, H - 24);
+        context.fillStyle = "#ff4040";
+        context.fill();
+        context.restore();
+      }
+    },
+
     forward: function(d)
     {
       var W = this.fg.canvas.width / 2;
@@ -57,17 +78,35 @@ logo.canvas_turtle = logo.turtle.create({
       this.x += d * Math.cos(a);
       this.y += d * Math.sin(a);
       populus.log("lineTo({0}, {1})".fmt(W - this.x, H + this.y));
-      this.fg.lineTo(W - this.x, H + this.y);
+      this.fg.lineTo(W + this.x, H + this.y);
       this.fg.stroke();
     },
 
-    home: function() { this.set_position_heading(0, 0, 0); },
+    home: function()
+    {
+      this.x = 0;
+      this.y = 0;
+      this.heading = 0;
+      this.draw_self();
+    },
 
-    set_position_head: function(x, y, heading)
+    set_heading: function(h)
+    {
+      this.heading = h;
+      this.draw_self();
+    },
+
+    set_hidden: function(p)
+    {
+      this.hidden = !!p;
+      this.draw_self();
+    },
+
+    set_position: function(x, y)
     {
       this.x = x;
       this.y = y;
-      this.heading = heading;
+      this.draw_self();
     },
 
     turn: function(incr) { this.heading += incr; },
@@ -77,6 +116,16 @@ logo.canvas_turtle = logo.turtle.create({
 logo.init_canvas_turtle = function(bg, fg, active, proto)
 {
   turtle = logo.canvas_turtle.$new(bg, fg, active, proto);
+
+  // ARC angle radius
+	//   draws an arc of a circle, with the turtle at the center, with the
+  //   specified radius, starting at the turtle's heading and extending
+  //   clockwise through the specified angle.  The turtle does not move.
+  logo.procedures.ARC = function(tokens, f)
+  {
+    // TODO
+    f(undefined, logo.$undefined.$new());
+  };
 
   // BACK dist
   // BK dist
@@ -133,14 +182,32 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
       }, f);
   };
 
+  // HEADING
+  //   outputs a number, the turtle's heading in degrees.
+  logo.procedures.HEADING = function(tokens, f)
+  {
+    f(undefined, logo.new_word(turtle.heading));
+  };
+
+  // HIDETURTLE
+  // HT
+  //   makes the turtle invisible.  It's a good idea to do this while
+  //   you're in the middle of a complicated drawing, because hiding
+  //   the turtle speeds up the drawing substantially.
+  logo.procedures.HIDETURTLE = function(tokens, f)
+  {
+    turtle.set_hidden(true);
+    f(undefined, logo.$undefined.$new());
+  };
+
   // POS
   //   outputs the turtle's current position, as a list of two
   //   numbers, the X and Y coordinates.
   logo.procedures.POS = function(tokens, f)
   {
-    var list = logo.list();
-    list.value.push(logo.word(turtle.x));
-    list.value.push(logo.word(turtle.y));
+    var list = logo.list.$new();
+    list.value.push(logo.new_word(turtle.x));
+    list.value.push(logo.new_word(turtle.y));
     f(undefined, list);
   };
 
@@ -156,13 +223,79 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
       }, f);
   };
 
+  // SETHEADING degrees
+  // SETH degrees
+	//   turns the turtle to a new absolute heading.  The input is
+  //   a number, the heading in degrees clockwise from the positive
+  //   Y axis.
+  logo.procedures.SETHEADING = function(tokens, f)
+  {
+    logo.eval_number(tokens, function(h) {
+        turtle.set_heading(h.value);
+        f(undefined, logo.$undefined.$new());
+      }, f);
+  };
+
   // SETPOS pos
 	//   moves the turtle to an absolute position in the graphics window.  The
 	//   input is a list of two numbers, the X and Y coordinates.
-  logo.procedure.SETPOS = function(tokens, f)
+  logo.procedures.SETPOS = function(tokens, f)
   {
-   // logo.eval_list(tokens, function(pos) {
-   //   }, f);
+    logo.eval_list(tokens, function(pos) {
+        if (pos.count === 2 &&
+          pos.value[0].is_number && pos.value[1].is_number) {
+          turtle.set_position(pos.value[0].value, pos.value[1].value);
+          f(undefined, logo.$undefined.$new());
+        } else {
+          f(logo.error(logo.ERR_DOESNT_LIKE, pos.show()));
+        }
+      }, f);
+  };
+
+  // SETX xcor
+	//   moves the turtle horizontally from its old position to a new
+	//   absolute horizontal coordinate.  The input is the new X
+  //   coordinate.
+  logo.procedures.SETX = function(tokens, f)
+  {
+    logo.eval_number(tokens, function(x) {
+        turtle.set_position(x.value, turtle.y);
+        f(undefined, logo.$undefined.$new());
+      }, f);
+  };
+
+  // SETXY xcor ycor
+	//   moves the turtle to an absolute position in the graphics window.  The
+  //   two inputs are numbers, the X and Y coordinates.
+  logo.procedures.SETXY = function(tokens, f)
+  {
+    logo.eval_number(tokens, function(x) {
+        logo.eval_number(tokens, function(y) {
+            turtle.set_position(x.value, y.value);
+            f(undefined, logo.$undefined.$new());
+          }, f);
+      }, f);
+  };
+
+  // SETY ycor
+	//   moves the turtle vertically from its old position to a new
+  //   absolute vertical coordinate.  The input is the new Y
+  //   coordinate.
+  logo.procedures.SETY = function(tokens, f)
+  {
+    logo.eval_number(tokens, function(y) {
+        turtle.set_position(turtle.x, y.value);
+        f(undefined, logo.$undefined.$new());
+      }, f);
+  };
+
+  // SHOWTURTLE
+  // ST
+	//   makes the turtle visible.
+  logo.procedures.SHOWTURTLE = function(tokens, f)
+  {
+    turtle.set_hidden(false);
+    f(undefined, logo.$undefined.$new());
   };
 
   return turtle;

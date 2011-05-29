@@ -1,4 +1,7 @@
 // The main interpreter/library
+// TODO
+//   * error is a token; review message codes
+//   * error reporting in list.run()
 
 if (typeof exports === "object") populus = require("populus");
 
