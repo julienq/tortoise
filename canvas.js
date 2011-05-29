@@ -15,6 +15,8 @@ logo.canvas_turtle = logo.turtle.create({
       self.fg = fg.getContext ? fg.getContext("2d") : fg;
       self.active = active.getContext ? active.getContext("2d") : active;
       self.hidden = false;
+      self.drawing = true;
+      self.color = "#fff";
       return self;
     },
 
@@ -71,15 +73,17 @@ logo.canvas_turtle = logo.turtle.create({
     {
       var W = this.fg.canvas.width / 2;
       var H = this.fg.canvas.height / 2;
-      this.fg.beginPath();
-      populus.log("moveTo({0}, {1})".fmt(W - this.x, H + this.y));
-      this.fg.moveTo(W - this.x, H + this.y);
       var a = (this.heading * Math.PI / 180) - Math.PI / 2;
-      this.x += d * Math.cos(a);
-      this.y += d * Math.sin(a);
-      populus.log("lineTo({0}, {1})".fmt(W - this.x, H + this.y));
-      this.fg.lineTo(W + this.x, H + this.y);
-      this.fg.stroke();
+      var x = this.x + d * Math.cos(a);
+      var y = this.y + d * Math.sin(a);
+      if (this.drawing) {
+        this.fg.beginPath();
+        this.fg.moveTo(W - this.x, H + this.y);
+        this.fg.lineTo(W - x, H + y);
+        this.fg.strokeStyle = this.color;
+        this.fg.stroke();
+      }
+      this.set_position(x, y);
     },
 
     home: function()
@@ -200,6 +204,24 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
     f(undefined, logo.$undefined.$new());
   };
 
+  // PENDOWN
+  // PD
+  //   sets the pen's position to DOWN, without changing its mode.
+  logo.procedures.PENDOWN = function(tokens, f)
+  {
+    turtle.drawing = true;
+    f(undefined, logo.$undefined.$new());
+  };
+
+  // PENUP
+  // PU
+	//   sets the pen's position to UP, without changing its mode.
+  logo.procedures.PENUP = function(tokens, f)
+  {
+    turtle.drawing = true;
+    f(undefined, logo.$undefined.$new());
+  };
+
   // POS
   //   outputs the turtle's current position, as a list of two
   //   numbers, the X and Y coordinates.
@@ -233,6 +255,28 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
     logo.eval_number(tokens, function(h) {
         turtle.set_heading(h.value);
         f(undefined, logo.$undefined.$new());
+      }, f);
+  };
+
+  // SETPENCOLOR colornumber.or.rgblist
+  // SETPC colornumber.or.rgblist
+	//   sets the pen color to the given number, which must be a nonnegative
+	//   integer.  (See colors above)
+	//   but other colors can be assigned to numbers by the PALETTE command.
+  //   Alternatively, sets the pen color to the given RGB values (a list of
+  //   three nonnegative numbers less than 100 specifying the percent
+  //   saturation of red, green, and blue in the desired color).
+  // TODO rgblist + color literals (#hex)
+  logo.procedures.SETPENCOLOR = function(tokens, f)
+  {
+    logo.eval_number(tokens, function(colornumber) {
+        var color = turtle.COLORS[colornumber.value];
+        if (color) {
+          turtle.color = color;
+          f(undefined, logo.$undefined.$new());
+        } else {
+          f(logo.err(logo.ERR_DOESNT_LIKE, colornumber.show()));
+        }
       }, f);
   };
 
