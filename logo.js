@@ -482,7 +482,7 @@ if (typeof exports === "object") populus = require("populus");
         IS_A_PRIMITIVE: "{1} is a primitive",
         NO_TEST: "{0} without TEST",
         NO_VAR: "{1} has no value",
-        NOT_ENOUGH_INPUTS: "Not enough inputs to {1}",
+        NOT_ENOUGH_INPUTS: "Not enough inputs to {0}",
         TOO_MUCH_INSIDE_PARENS: "Too much inside ()'s",
         UNEXPECTED_BRACKET: 'Unexpected "]"',
         UNEXPECTED_INPUT: 'Unexpected input: "{1}"',

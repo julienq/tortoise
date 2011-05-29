@@ -2,7 +2,7 @@
 ;   if thing2 is a word, outputs WORD thing1 thing2.  If thing2 is a list,
 ;   outputs FPUT thing1 thing2.
 TO COMBINE :thing1 :thing2
-  IFELSE WORD? :thing1 [WORD :thing1 :thing2] [FPUT :thing1 :thing2]
+  IFELSE WORD? :thing2 [WORD :thing1 :thing2] [FPUT :thing1 :thing2]
 END
 
 ; IGNORE value
