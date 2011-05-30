@@ -1,11 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <title>Tortoise | A Javascript Logo interpreter with an SVG turtle</title>
+    <title>Tortoise | A Javascript Logo interpreter with a canvas turtle</title>
     <meta charset="UTF-8">
     <style>
       body { margin: 1em auto; padding: 0; width: 854px; }
-      .svg { background-color: #222; text-align: center; }
       #out { font-family: monospace; max-height: 24em; overflow: auto; }
       #cmdline { font-family: monospace; font-size: 100%; border: none;
         background-color: #ddd; }
@@ -18,15 +17,6 @@
     </style>
   </head>
   <body>
-    <!--
-    <svg id="svg_main" width="854px" height="480px"
-      viewBox="-427 -240 854 480">
-      <rect id="svg_bg" x="-427" y="-240" width="854" height="480"
-        fill="black"/>
-      <g id="svg_fg"/>
-      <path id="svg_turtle" fill="#ff4040" d="M8,0L0,-16L-8,0Z"/>
-    </svg>
-    -->
     <div id="canvas">
       <canvas id="canvas_bg" width="854" height="480"></canvas>
       <canvas id="canvas_fg" width="854" height="480"></canvas>

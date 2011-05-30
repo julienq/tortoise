@@ -17,6 +17,9 @@ logo.canvas_turtle = logo.turtle.create({
       self.hidden = false;
       self.drawing = true;
       self.color = "#ffffff";
+      self.bg_color = "#000000";
+      self.half_size = 8;
+      self.pen_size = 1;
       return self;
     },
 
@@ -44,8 +47,10 @@ logo.canvas_turtle = logo.turtle.create({
     {
       var W = this.bg.canvas.width;
       var H = this.bg.canvas.height;
+      this.bg.fillStyle = this.bg_color;
       this.bg.fillRect(0, 0, W, H);
       this.fg.clearRect(0, 0, W, H);
+      this.set_pen_size(this.pen_size);
     },
 
     // Draw the turtle at the current position/heading in its canvas
@@ -57,11 +62,14 @@ logo.canvas_turtle = logo.turtle.create({
       context.clearRect(0, 0, W * 2, H * 2);
       if (!this.hidden) {
         context.save();
-        context.translate(this.x, -this.y);
+        context.translate(W, H);
+        context.scale(1, -1);
+        context.translate(this.x, this.y);
+        context.rotate(populus.radians(-this.heading));
         context.beginPath();
-        context.moveTo(W - 12, H);
-        context.lineTo(W + 12, H);
-        context.lineTo(W, H - 24);
+        context.moveTo(-this.half_size, -this.half_size);
+        context.lineTo(this.half_size, -this.half_size);
+        context.lineTo(0, this.half_size);
         context.fillStyle = "#ff4040";
         context.fill();
         context.restore();
@@ -72,15 +80,19 @@ logo.canvas_turtle = logo.turtle.create({
     {
       var W = this.fg.canvas.width / 2;
       var H = this.fg.canvas.height / 2;
-      var a = (this.heading * Math.PI / 180) - Math.PI / 2;
+      var a = Math.PI / 2 - populus.radians(this.heading);
       var x = this.x + d * Math.cos(a);
       var y = this.y + d * Math.sin(a);
       if (this.drawing) {
+        this.fg.save();
+        this.fg.translate(W, H);
+        this.fg.scale(1, -1);
         this.fg.beginPath();
-        this.fg.moveTo(W - this.x, H + this.y);
-        this.fg.lineTo(W - x, H + y);
+        this.fg.moveTo(this.x, this.y);
+        this.fg.lineTo(x, y);
         this.fg.strokeStyle = this.color;
         this.fg.stroke();
+        this.fg.restore();
       }
       this.set_position(x, y);
     },
@@ -91,6 +103,13 @@ logo.canvas_turtle = logo.turtle.create({
       this.y = 0;
       this.heading = 0;
       this.draw_self();
+    },
+
+    set_bg_color: function(color)
+    {
+      this.bg_color = color;
+      this.bg.fillStyle = this.bg_color;
+      this.bg.fillRect(0, 0, this.bg.canvas.width, this.bg.canvas.height);
     },
 
     set_heading: function(h)
@@ -105,14 +124,20 @@ logo.canvas_turtle = logo.turtle.create({
       this.draw_self();
     },
 
+    set_pen_size: function(sz)
+    {
+      this.pen_size = sz;
+      this.fg.lineWidth = this.pen_size;
+      this.fg.lineCap = "round";
+      this.fg.lineJoin = "round";
+    },
+
     set_position: function(x, y)
     {
       this.x = x;
       this.y = y;
       this.draw_self();
     },
-
-    turn: function(incr) { this.heading += incr; },
 
   });
 
@@ -141,6 +166,16 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
         turtle.forward(-dist.value);
         f(undefined, logo.$undefined.$new());
       }, f);
+  };
+
+  // BACKGROUND
+  // BG
+	//   outputs the graphics background color, either as a slot number or
+  //   as an RGB list, whichever way it was set.  (See PENCOLOR.)
+  logo.procedures.BACKGROUND = function(tokens, f)
+  {
+    // TODO
+    f(undefined, logo.$undefined.$new());
   };
 
   // CLEAN
@@ -180,7 +215,7 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
   logo.procedures.LEFT = function(tokens, f)
   {
     logo.eval_number(tokens, function(degrees) {
-        turtle.turn(-degrees.value);
+        turtle.set_heading(turtle.heading - degrees.value);
         f(undefined, logo.$undefined.$new());
       }, f);
   };
@@ -203,6 +238,17 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
     f(undefined, logo.$undefined.$new());
   };
 
+  // PENCOLOR
+  // PC
+  //   outputs a color number, a nonnegative integer that is associated with
+  //   a particular color, or a list of RGB values if such a list was used as
+  //   the most recent input to SETPENCOLOR.
+  logo.procedures.PENCOLOR = function(tokens, f)
+  {
+    // TODO
+    f(undefined, logo.$undefined.$new());
+  };
+
   // PENDOWN
   // PD
   //   sets the pen's position to DOWN, without changing its mode.
@@ -212,6 +258,14 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
     f(undefined, logo.$undefined.$new());
   };
 
+  // PENDOWNP
+  // PENDOWN?
+  //   outputs TRUE if the pen is down, FALSE if it's up.
+  logo.procedures.PENDOWNP = function(tokens, f)
+  {
+    f(undefined, logo.new_word(turtle.drawing));
+  };
+
   // PENUP
   // PU
   //   sets the pen's position to UP, without changing its mode.
@@ -219,6 +273,16 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
   {
     turtle.drawing = true;
     f(undefined, logo.$undefined.$new());
+  };
+
+  // PENSIZE
+	//   outputs a list of two positive integers, specifying the horizontal
+  //   and vertical thickness of the turtle pen.  (In some implementations,
+  //   including wxWidgets, the two numbers are always equal.)
+  // TODO we output just one number at the moment
+  logo.procedures.PENSIZE = function(tokens, f)
+  {
+    f(undefined, logo.new_word(turtle.pen_size));
   };
 
   // POS
@@ -239,8 +303,25 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
   logo.procedures.RIGHT = function(tokens, f)
   {
     logo.eval_number(tokens, function(degrees) {
-        turtle.turn(degrees.value);
+        turtle.set_heading(turtle.heading + degrees.value);
         f(undefined, logo.$undefined.$new());
+      }, f);
+  };
+
+  // SETBACKGROUND colornumber.or.rgblist
+  // SETBG colornumber.or.rgblist
+  //   set the screen background color by slot number or RGB values.
+  //   See SETPENCOLOR for details.
+  logo.procedures.SETBACKGROUND = function(tokens, f)
+  {
+    logo.eval_number(tokens, function(colornumber) {
+        var color = turtle.COLORS[colornumber.value];
+        if (color) {
+          turtle.set_bg_color(color);
+          f(undefined, logo.$undefined.$new());
+        } else {
+          f(logo.err(logo.ERR_DOESNT_LIKE, colornumber.show()));
+        }
       }, f);
   };
 
@@ -279,6 +360,23 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
       }, f);
   };
 
+  // SETPENSIZE size
+  //   sets the thickness of the pen.  The input is either a single positive
+  //   integer or a list of two positive integers (for horizontal and
+  //   vertical thickness).  Some versions pay no attention to the second
+  //   number, but always have a square pen.
+  logo.procedures.SETPENSIZE = function(tokens, f)
+  {
+    logo.eval_number(tokens, function(size) {
+        if (size.value > 0) {
+          turtle.set_pen_size(size.value);
+          f(undefined, logo.$undefined.$new());
+        } else {
+          f(logo.error.$new("DOESNT_LIKE", size.show()));
+        }
+      }, f);
+  };
+
   // SETPOS pos
   //   moves the turtle to an absolute position in the graphics window.  The
   //   input is a list of two numbers, the X and Y coordinates.
@@ -290,7 +388,7 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
           turtle.set_position(pos.value[0].value, pos.value[1].value);
           f(undefined, logo.$undefined.$new());
         } else {
-          f(logo.error(logo.ERR_DOESNT_LIKE, pos.show()));
+          f(logo.error.$new("DOESNT_LIKE", pos.show()));
         }
       }, f);
   };
@@ -330,6 +428,15 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
         turtle.set_position(turtle.x, y.value);
         f(undefined, logo.$undefined.$new());
       }, f);
+  };
+
+  // SHOWNP
+  // SHONW?
+  //   outputs TRUE if the turtle is shown (visible), FALSE if the
+  //   turtle is hidden.  See SHOWTURTLE and HIDETURTLE.
+  logo.procedures.SHOWNP = function(tokens, f)
+  {
+    f(undefined, logo.new_word(!turtle.hidden));
   };
 
   // SHOWTURTLE
