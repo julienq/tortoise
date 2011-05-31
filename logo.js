@@ -930,7 +930,9 @@ if (typeof exports === "object") populus = require("populus");
       f(logo.error.$new("NO_TEST"));
     } else {
       logo.eval_token(tokens, function(list) {
-          if (logo.scope.test !== p) {
+          for (var scope = logo.scope; !scope.hasOwnProperty("exit");
+            scope = scope.parent);
+          if (scope.test !== p) {
             f(undefined, logo.$undefined.$new());
           } else {
             list.run(f);
@@ -2372,10 +2374,12 @@ if (typeof exports === "object") populus = require("populus");
     TEST: function(tokens, f)
     {
       logo.eval_token(tokens, function(tf) {
-          if (!(tf.is_true() || tf.is_false())) {
+          if (!(tf.is_true || tf.is_false)) {
             f(logo.error.$new("DOESNT_LIKE", tf.show()));
           } else {
-            logo.scope.test = tf.is_true;
+            for (var scope = logo.scope; !scope.hasOwnProperty("exit");
+              scope = scope.parent);
+            scope.test = tf.is_true;
             f(undefined, logo.$undefined.$new());
           }
         }, f);
