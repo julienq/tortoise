@@ -16,8 +16,10 @@ logo.canvas_turtle = logo.turtle.create({
       self.active = active.getContext ? active.getContext("2d") : active;
       self.hidden = false;
       self.drawing = true;
-      self.color = "#ffffff";
-      self.bg_color = "#000000";
+      self.bg_color = "#ffffff";
+      self.bg_color_surface = logo.new_word(7);
+      self.color = "#000000";
+      self.color_surface = logo.new_word(0);
       self.half_size = 8;
       self.pen_size = 1;
       return self;
@@ -70,7 +72,7 @@ logo.canvas_turtle = logo.turtle.create({
         context.moveTo(-this.half_size, -this.half_size);
         context.lineTo(this.half_size, -this.half_size);
         context.lineTo(0, this.half_size);
-        context.fillStyle = "#ff4040";
+        context.fillStyle = this.color;
         context.fill();
         context.restore();
       }
@@ -97,6 +99,26 @@ logo.canvas_turtle = logo.turtle.create({
       this.set_position(x, y);
     },
 
+    // Get the color for a token, which can be either a color list, a color
+    // number or a hex color (3 or 6 digit). TODO: rgba, named colors
+    get_color: function(c)
+    {
+      var m;
+      if (c.is_list && c.count === 3 &&
+        c.value[0].is_number && c.value[0] >= 0 && c.value[0] <= 100 &&
+        c.value[1].is_number && c.value[1] >= 0 && c.value[1] <= 100 &&
+        c.value[2].is_number && c.value[2] >= 0 && c.value[2] <= 100) {
+        return "rgb({0}, {1}, {2})".fmt(Math.round(c.value[0] * 2.55),
+          Math.round(c.value[1] * 2.55), Math.round(c.value[2] * 2.55));
+      } else if (c.is_integer) {
+        var color = turtle.COLORS[c.value];
+        if (color) return color;
+      } else if (c.is_word &&
+        (m = c.value.match(/^\#([0-9a-f]{3}(?:[0-9a-f]{3})?)$/i))) {
+        return m[1];
+      }
+    },
+
     home: function()
     {
       this.x = 0;
@@ -105,11 +127,19 @@ logo.canvas_turtle = logo.turtle.create({
       this.draw_self();
     },
 
-    set_bg_color: function(color)
+    set_bg_color: function(color, surface)
     {
       this.bg_color = color;
+      this.bg_color_surface = surface;
       this.bg.fillStyle = this.bg_color;
       this.bg.fillRect(0, 0, this.bg.canvas.width, this.bg.canvas.height);
+    },
+
+    set_pen_color: function(color, surface)
+    {
+      this.color = color;
+      this.color_surface = surface;
+      this.draw_self();
     },
 
     set_heading: function(h)
@@ -238,6 +268,23 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
     f(undefined, logo.$undefined.$new());
   };
 
+  // PALETTE colornumber
+  //   outputs a list of three nonnegative numbers less than 100 specifying
+  //   the percent saturation of red, green, and blue in the color associated
+  //   with the given number.
+  logo.procedures.PALETTE = function(tokens, f)
+  {
+    logo.eval_integer(tokens, function(c) {
+        var color = turtle.COLORS[c.value];
+        if (color) {
+          // TODO
+          f(undefined, logo.new_word(color));
+        } else {
+          f(logo.error.$new("DOESNT_LIKE", c.show()));
+        }
+      }, f);
+  };
+
   // PENCOLOR
   // PC
   //   outputs a color number, a nonnegative integer that is associated with
@@ -245,8 +292,7 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
   //   the most recent input to SETPENCOLOR.
   logo.procedures.PENCOLOR = function(tokens, f)
   {
-    // TODO
-    f(undefined, logo.$undefined.$new());
+    f(undefined, turtle.color_surface);
   };
 
   // PENDOWN
@@ -314,13 +360,13 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
   //   See SETPENCOLOR for details.
   logo.procedures.SETBACKGROUND = function(tokens, f)
   {
-    logo.eval_number(tokens, function(colornumber) {
-        var color = turtle.COLORS[colornumber.value];
+    logo.eval_token(tokens, function(c) {
+        var color = turtle.get_color(c);
         if (color) {
-          turtle.set_bg_color(color);
+          turtle.set_bg_color(color, c);
           f(undefined, logo.$undefined.$new());
         } else {
-          f(logo.err(logo.ERR_DOESNT_LIKE, colornumber.show()));
+          f(logo.error.$new("DOESNT_LIKE", c.show()));
         }
       }, f);
   };
@@ -338,6 +384,32 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
       }, f);
   };
 
+  // SETPALETTE colornumber rgblist
+	//   sets the actual color corresponding to a given number, if allowed by
+  //   the hardware and operating system.  Colornumber must be an integer
+  //   greater than or equal to 8.  (Logo tries to keep the first 8 colors
+  //   constant.)  The second input is a list of three nonnegative numbers
+  //   less than 100 specifying the percent saturation of red, green, and
+  //   blue in the desired color.
+  logo.procedures.SETPALETTE = function(tokens, f)
+  {
+    logo.eval_integer(tokens, function(num) {
+        if (num.value >= 8) {
+          logo.eval_token(tokens, function(c) {
+              var color = turtle.get_color(c);
+              if (color && !c.is_integer) {
+                turtle.COLORS[num.value] = color;
+                f(undefined, logo.$undefined.$new());
+              } else {
+                f(logo.error.$new("DOESNT_LIKE", c.show()));
+              }
+            });
+        } else {
+          f(logo.error.$new("DOESNT_LIKE", c.show()));
+        }
+      }, f);
+  };
+
   // SETPENCOLOR colornumber.or.rgblist
   // SETPC colornumber.or.rgblist
   //   sets the pen color to the given number, which must be a nonnegative
@@ -346,19 +418,18 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
   //   Alternatively, sets the pen color to the given RGB values (a list of
   //   three nonnegative numbers less than 100 specifying the percent
   //   saturation of red, green, and blue in the desired color).
-  // TODO rgblist + color literals (#hex)
   logo.procedures.SETPENCOLOR = function(tokens, f)
   {
-    logo.eval_number(tokens, function(colornumber) {
-        var color = turtle.COLORS[colornumber.value];
+    logo.eval_token(tokens, function(c) {
+        var color = turtle.get_color(c);
         if (color) {
-          turtle.color = color;
+          turtle.set_pen_color(color, c);
           f(undefined, logo.$undefined.$new());
         } else {
-          f(logo.err(logo.ERR_DOESNT_LIKE, colornumber.show()));
+          f(logo.error.$new("DOESNT_LIKE", c.show()));
         }
       }, f);
-  };
+  },
 
   // SETPENSIZE size
   //   sets the thickness of the pen.  The input is either a single positive
