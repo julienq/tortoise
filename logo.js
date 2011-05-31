@@ -289,30 +289,29 @@ if (typeof exports === "object") populus = require("populus");
   {
     var p = function(tokens, f)
     {
-      var parent = logo.scope;
-      logo.scope = { parent: parent,
-        current_token: parent.current_token,
-        things: Object.create(parent.things),
-        in_parens: parent.in_parens,
-        procedure: true,
-        exit: function(error, value) {
-            logo.scope = parent;
-            if (error) {
-              f(error);
-            } else if (definition.is_macro) {
-              value.run(f);
-            } else {
-              logo.trace("& {0} (exited with value {1})"
-                  .fmt($scope(), value.show()));
-              f(error, value);
-            }
-          } };
+      var scope = Object.create(logo.scope);
+      var parent = scope.parent = logo.scope;
+      scope.things = Object.create(parent.things);
+      scope.procedure = true;
+      scope.exit = function(error, value) {
+          logo.scope = parent;
+          if (error) {
+            f(error);
+          } else if (definition.is_macro) {
+            value.run(f);
+          } else {
+            logo.trace("& {0} (exited with value {1})"
+                .fmt($scope(), value.show()));
+            f(error, value);
+          }
+        };
+      logo.scope = scope;
       // In parens read between min and max args, otherwise the default number
       // of arguments. If we haven't read all arguments instantiate the ones
       // that have not been read with the default expressions.
-      var min = logo.scope.in_parens ? definition.min_args :
+      var min = logo.scope.current_token.in_parens ? definition.min_args :
         definition.default_args;
-      var max = logo.scope.in_parens ? definition.max_args :
+      var max = logo.scope.current_token.in_parens ? definition.max_args :
         definition.default_args;
       var n = definition.args.length;
       var m = Math.max(max, n);
@@ -402,12 +401,15 @@ if (typeof exports === "object") populus = require("populus");
     (function ch(scope) {
       if (scope) {
         ch(scope.parent);
-        chain += "[{0}{1}{2}{3}]".fmt(scope.current_token, scope.in_parens ?
-          "*" : scope.hasOwnProperty("group") ? "()" :
+        chain += "[{0}{1}{2}{3}]"
+          .fmt(scope.hasOwnProperty("current_token") ?
+            scope.current_token : "",
+            scope.hasOwnProperty("current_token") &&
+            scope.current_token.in_parens ? "*" :
             scope.hasOwnProperty("procedure") ? "&" :
             scope.hasOwnProperty("slots") ? "#" : "",
-          scope.precedence > 0 ? "/{0}".fmt(scope.precedence) : "",
-          scope.hasOwnProperty("exit") ? "!" : "");
+            scope.precedence > 0 ? "/{0}".fmt(scope.precedence) : "",
+            scope.hasOwnProperty("exit") ? "!" : "");
       }
     })(logo.scope);
     return chain;
@@ -583,7 +585,6 @@ if (typeof exports === "object") populus = require("populus");
           var scope = Object.create(logo.scope);
           scope.parent = logo.scope;
           scope.current_token = this;
-          scope.in_parens = !!this.in_parens;
           scope.precedence = this.precedence;
           logo.scope = scope;
           logo.trace("< {0}".fmt($scope()));
@@ -691,13 +692,6 @@ if (typeof exports === "object") populus = require("populus");
       apply: function(tokens, f) {
           var tokens_ = this.value.slice(0);
           if (tokens_.length > 0) {
-            var scope = Object.create(logo.scope);
-            scope.parent = logo.scope;
-            delete scope.current_token;
-            delete scope.in_parens;
-            scope.precedence = 0;
-            scope.group = true;
-            logo.scope = scope;
             logo.trace("( {0}".fmt($scope()));
             logo.eval(tokens_, function(error, value) {
                 logo.trace(") {0} {1}".fmt($scope(), error || value));
@@ -896,8 +890,8 @@ if (typeof exports === "object") populus = require("populus");
   logo.eval_slurp = function(tokens, g, f, n, init)
   {
     (function slurp(m, acc) {
-      if ((logo.scope.in_parens && tokens.length === 0) ||
-        (!logo.scope.in_parens && m === 0)) {
+      if ((logo.scope.current_token.in_parens && tokens.length === 0) ||
+        (!logo.scope.current_token.in_parens && m === 0)) {
         f(undefined, acc);
       } else {
         logo.eval(tokens, function(error, value) {
@@ -1086,7 +1080,7 @@ if (typeof exports === "object") populus = require("populus");
     //   90 or -90 depending on the sign of y, if x is zero.
     ARCTAN: function(tokens, f)
     {
-      if (logo.scope.in_parens) {
+      if (logo.scope.current_token.in_parens) {
         logo.eval_number(tokens, function(x) {
             logo.eval_number(tokens, function(y) {
                 if (x.value === 0) {
@@ -1483,9 +1477,9 @@ if (typeof exports === "object") populus = require("populus");
     {
       logo.eval_boolean(tokens, function(tf) {
           logo.eval_list(tokens, function(list_then) {
-              if ((logo.scope.in_parens && tokens.length > 0 ||
+              if ((logo.scope.current_token.in_parens && tokens.length > 0 ||
                   tokens.length > 0 && tokens[0].is_list)) {
-                if (!logo.scope.in_parens) {
+                if (!logo.scope.current_token.in_parens) {
                   logo.warn(logo.error.$new("ASSUMING_IF_ELSE"));
                 }
                 logo.eval_list(tokens, function(list_else) {
@@ -1649,7 +1643,7 @@ if (typeof exports === "object") populus = require("populus");
     LOCAL: function(tokens, f)
     {
       var varnames = [];
-      if (logo.scope.in_parens) {
+      if (logo.scope.current_token.in_parens) {
         (function slurp() {
           if (tokens.length > 0) {
             logo.eval_word(tokens, function(varname) {
@@ -1995,7 +1989,7 @@ if (typeof exports === "object") populus = require("populus");
     //   QUOTIENT outputs the reciprocal of the input.
     QUOTIENT: function(tokens, f)
     {
-      if (logo.scope.in_parens) {
+      if (logo.scope.current_token.in_parens) {
         logo.eval_number(tokens, function(num) {
             f(undefined, logo.new_word(1 / num.value));
           }, f);
@@ -2027,7 +2021,7 @@ if (typeof exports === "object") populus = require("populus");
     //   value of pi.
     RADARCTAN: function(tokens, f)
     {
-      if (logo.scope.in_parens) {
+      if (logo.scope.current_token.in_parens) {
         logo.eval_number(tokens, function(x) {
             logo.eval_number(tokens, function(y) {
                 if (x.value === 0) {
@@ -2074,7 +2068,7 @@ if (typeof exports === "object") populus = require("populus");
     //   (RANDOM 3 8) is equivalent to (RANDOM 6)+3.
     RANDOM: function(tokens, f)
     {
-      if (logo.scope.in_parens) {
+      if (logo.scope.current_token.in_parens) {
         logo.eval_integer(tokens, function(start) {
             logo.eval_integer(tokens, function(end) {
                 if (end.value - start.value < 0) {
@@ -2212,7 +2206,7 @@ if (typeof exports === "object") populus = require("populus");
     //   input selects a unique sequence of numbers.
     RERANDOM: function(tokens, f)
     {
-      if (logo.scope.in_parens) {
+      if (logo.scope.current_token.in_parens) {
         logo.eval_integer(tokens, function(seed) {
             MERSENNE_TWISTER.set_seed(seed.value);
             f(undefined, logo.$undefined.$new());
@@ -2400,6 +2394,7 @@ if (typeof exports === "object") populus = require("populus");
       logo.eval_word(tokens, function(varname) {
           var val = logo.scope.things[varname.value.toUpperCase()];
           if (val) {
+            logo.trace("THING {0} = {1}".fmt(varname.value.toUpperCase(), val));
             f(undefined, val);
           } else {
             f(logo.error.$new("NO_VAR", varname.show()));
