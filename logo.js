@@ -1,7 +1,7 @@
 // The main interpreter/library
 // TODO
-//   * error is a token; review message codes
-//   * error reporting in list.run()
+//   * improve GUI
+//   * |(| ?
 
 if (typeof exports === "object") populus = require("populus");
 
@@ -955,13 +955,19 @@ if (typeof exports === "object") populus = require("populus");
     logo.scope.repcount = 0;
     logo.scope.exit = function(error, value) {
       logo.scope = parent;
-      logo.trace("@ {0} exit with value {1}".fmt($scope(), value.show()));
+      if (error) {
+        logo.trace("@ {0} exit with error {1}".fmt($scope(), error.show()));
+      } else {
+        logo.trace("@ {0} exit with value {1}".fmt($scope(), value.show()));
+      }
       logo.scope.exit(error, value);
     }
     logo.trace("@ {0} repeat {1} time{2}"
         .fmt($scope(), times, times > 1 ? "s" : ""));
-    (function repeat_() {
-      if (logo.scope.repcount >= times) {
+    (function repeat_(error) {
+      if (error) {
+        logo.scope.exit(error);
+      } else if (logo.scope.repcount >= times) {
         logo.trace("@ {0} repeated {1} time{2}".fmt($scope(),
             logo.scope.repcount, logo.scope.repcount > 1 ? "s" : ""));
         logo.scope.exit(undefined, logo.$undefined.$new());
