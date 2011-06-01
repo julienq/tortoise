@@ -7,7 +7,7 @@
       body { margin: 1em auto; padding: 0; width: 854px; }
       #out { font-family: monospace; max-height: 24em; overflow: auto; }
       #cmdline { font-family: monospace; font-size: 100%; border: none;
-        background-color: #ddd; }
+        background-color: #ddd; width: 854px; }
       #cmdline:focus { outline: none; background-color: #ffe; color: #08f; }
       .cmd { color: #08f; }
       .warning { color: #f80; }
@@ -23,7 +23,7 @@
       <canvas id="canvas_active" width="854" height="480"></canvas>
     </div>
     <div id="out"><div id="out_"></div></div>
-    <textarea id="cmdline" cols="80" rows="1" spellcheck="false"></textarea>
+    <input type="text" id="cmdline">
     <script src="populus.js"></script>
     <script src="logo.js"></script>
     <script src="canvas.js"></script>

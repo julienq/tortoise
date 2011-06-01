@@ -2,12 +2,14 @@
 
 var out = document.getElementById("out_");
 var cmdline = document.getElementById("cmdline");
+cmdline.style.display = "none";
 
 var lines = [];
 
 // Prompt for a single line of input
 logo.prompt_raw = function(p, f)
 {
+  cmdline.style.display = "";
   if (lines.length > 0) {
     f(lines.shift());
   } else {
@@ -19,6 +21,7 @@ logo.prompt_raw = function(p, f)
         var input = cmdline.value;
         cmdline.value = "";
         logo.print(input, "cmd");
+        cmdline.style.display = "none";
         f(input);
       }
     }
