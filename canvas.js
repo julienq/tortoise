@@ -8,12 +8,13 @@ logo.turtle = populus.object.create();
 
 logo.canvas_turtle = logo.turtle.create({
 
-    init: function(bg, fg, active)
+    init: function(bg, fg, active, sprite)
     {
       var self = this.call_super("init");
       self.bg = bg.getContext ? bg.getContext("2d") : bg;
       self.fg = fg.getContext ? fg.getContext("2d") : fg;
       self.active = active.getContext ? active.getContext("2d") : active;
+      self.sprite = sprite.getContext ? sprite.getContext("2d") : sprite;
       self.hidden = false;
       self.drawing = true;
       self.bg_color = "#ffffff";
@@ -52,13 +53,14 @@ logo.canvas_turtle = logo.turtle.create({
       this.bg.fillStyle = this.bg_color;
       this.bg.fillRect(0, 0, W, H);
       this.fg.clearRect(0, 0, W, H);
+      this.active.clearRect(0, 0, W, H);
       this.set_pen_size(this.pen_size);
     },
 
     // Draw the turtle at the current position/heading in its canvas
     draw_self: function()
     {
-      var context = this.active;
+      var context = this.sprite;
       var W = context.canvas.width / 2;
       var H = context.canvas.height / 2;
       context.clearRect(0, 0, W * 2, H * 2);
@@ -80,21 +82,21 @@ logo.canvas_turtle = logo.turtle.create({
 
     forward: function(d)
     {
-      var W = this.fg.canvas.width / 2;
-      var H = this.fg.canvas.height / 2;
+      var W = this.active.canvas.width / 2;
+      var H = this.active.canvas.height / 2;
       var a = Math.PI / 2 - populus.radians(this.heading);
       var x = this.x + d * Math.cos(a);
       var y = this.y + d * Math.sin(a);
       if (this.drawing) {
-        this.fg.save();
-        this.fg.translate(W, H);
-        this.fg.scale(1, -1);
-        this.fg.beginPath();
-        this.fg.moveTo(this.x, this.y);
-        this.fg.lineTo(x, y);
-        this.fg.strokeStyle = this.color;
-        this.fg.stroke();
-        this.fg.restore();
+        this.active.save();
+        this.active.translate(W, H);
+        this.active.scale(1, -1);
+        this.active.beginPath();
+        this.active.moveTo(this.x, this.y);
+        this.active.lineTo(x, y);
+        this.active.strokeStyle = this.color;
+        this.active.stroke();
+        this.active.restore();
       }
       this.set_position(x, y);
     },
@@ -157,9 +159,9 @@ logo.canvas_turtle = logo.turtle.create({
     set_pen_size: function(sz)
     {
       this.pen_size = sz;
-      this.fg.lineWidth = this.pen_size;
-      this.fg.lineCap = "round";
-      this.fg.lineJoin = "round";
+      this.active.lineWidth = this.pen_size;
+      this.active.lineCap = "round";
+      this.active.lineJoin = "round";
     },
 
     set_position: function(x, y)
@@ -169,11 +171,16 @@ logo.canvas_turtle = logo.turtle.create({
       this.draw_self();
     },
 
+    set_scrunch: function(xscale, yscale)
+    {
+      this.active.scale(xscale, -yscale);
+    },
+
   });
 
-logo.init_canvas_turtle = function(bg, fg, active, proto)
+logo.init_canvas_turtle = function(bg, fg, active, sprite)
 {
-  turtle = logo.canvas_turtle.$new(bg, fg, active, proto);
+  turtle = logo.canvas_turtle.$new(bg, fg, active, sprite);
 
   // ARC angle radius
   //   draws an arc of a circle, with the turtle at the center, with the
@@ -461,6 +468,25 @@ logo.init_canvas_turtle = function(bg, fg, active, proto)
         } else {
           f(logo.error.$new("DOESNT_LIKE", pos.show()));
         }
+      }, f);
+  };
+
+  // SETSCRUNCH xscale yscale
+	//   adjusts the aspect ratio and scaling of the graphics display.
+  //   After this command is used, all further turtle motion will be
+  //   adjusted by multiplying the horizontal and vertical extent of
+  //   the motion by the two numbers given as inputs.  For example,
+  //   after the instruction "SETSCRUNCH 2 1" motion at a heading of
+  //   45 degrees will move twice as far horizontally as vertically.
+  //   If your squares don't come out square, try this.  (Alternatively,
+  //   you can deliberately misadjust the aspect ratio to draw an ellipse.)
+  logo.procedures.SETSCRUNCH = function(tokens, f)
+  {
+    logo.eval_number(tokens, function(xscale) {
+        logo.eval_number(tokens, function(yscale) {
+            turtle.set_scrunch(xscale, yscale);
+            f(undefined, logo.$undefined.$new());
+          }, f);
       }, f);
   };
 

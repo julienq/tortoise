@@ -1,6 +1,8 @@
 // The main interpreter/library
 // TODO
 //   * groups/infix bugs (e.g. print (2+3)/(2*3))
+//   * tco?!? (e.g. forever)
+//   * setscrunch
 //   * improve GUI
 //   * |(| ?
 

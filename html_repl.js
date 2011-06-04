@@ -80,7 +80,8 @@ function eval_script(url, f)
 
 logo.init_canvas_turtle(document.getElementById("canvas_bg"),
   document.getElementById("canvas_fg"),
-  document.getElementById("canvas_active"));
+  document.getElementById("canvas_active"),
+  document.getElementById("canvas_sprite"));
 
 function repl()
 {
