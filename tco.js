@@ -1,3 +1,6 @@
+// Originally by Spencer Tipping; see
+// http://github.com/spencertipping/js-in-ten-minutes
+
 Function.prototype.tail = function()
 {
   return [this, arguments];
@@ -12,18 +15,25 @@ Function.prototype.tco = function()
 };
 
 function id(x) { return x; }
+function nop() {}
 
+
+// Token stream is a wrapper around a string since strings are immutable in JS
 var token_stream =
 {
   init: function(str)
   {
     this.consumed = "";
     this.value = str;
+    this.ended = !str.length;
     return this;
   },
 
   // Consume the input matching rx and return true if there was a match
   // rx must be anchored!
+  // TODO consume a symbol rather than a regex so that we can use an already
+  // tokenized input (e.g. a list), and also ensure that all our regexes are
+  // anchored
   consume: function(rx)
   {
     var m = this.value.match(rx);
@@ -32,95 +42,95 @@ var token_stream =
       this.consumed += this.value.substr(0, l);
       this.value = this.value.substr(l);
     }
+    this.ended = !this.value.length;
     return m;
   },
 };
 
-// Eval a token stream
-function eval_stream(stream, k)
+// Eval a token from the stream
+function eval_token(stream, k)
 {
   var m = stream.consume(/^\s+/);
-  if (!stream.value.length) {
-    console.log("eval_string: empty stream");
-    return k.tail();
-  }
+  if (stream.ended) return k.tail();
   if (m = stream.consume(/^"((?:[^\s\[\]\(\);\\]|(?:\\.))*)/)) {
-    console.log("got token: quoted " + m[0]);
     return eval_quoted.tail(m[1], k);
   } else if (m = stream
       .consume(/^((\d+(\.\d*)?)|(\d*\.\d+))(?=[\s\[\]\(\)+\-*\/=<>;]|$)/)) {
-    console.log("got token: number " + m[0]);
     return eval_number.tail(m[0], k);
   } else if (m = stream
       .consume(/^(:?)((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/)) {
-    console.log("got token: word " + m[0]);
     return eval_word.tail(m[0], stream, k);
   }
 }
 
-function eval_number(n, k)
-{
-  var val = parseFloat(n);
-  console.log("eval_number: " + val);
-  return k.tail(val);
-}
+// Eval a number: simply return its value
+function eval_number(n, k) { return k.tail(parseFloat(n)); }
 
-function eval_quoted(q, k)
-{
-  var val = q.replace(/\\(.)/g, "$1");
-  console.log("eval_quoted: " + val);
-  return k.tail(val);
-}
+// Eval a quoted word: simply return its value
+function eval_quoted(q, k) { return k.tail(q.replace(/\\(.)/g, "$1")); }
 
+// Eval a word: find the corresponding function and execute it, getting the
+// arguments from the token stream
 function eval_word(w, stream, k)
 {
-  var val = w.replace(/\\(.)/g, "$1").toUpperCase();
-  var f = WORDS[val];
-  console.log("eval_word: " + val + "(" + stream.value + ")");
+  var f = WORDS[w.replace(/\\(.)/g, "$1").toUpperCase()];
   return f.tail(stream, k);
 }
 
+// Predefined words
 WORDS =
 {
   COUNT: function(stream, k)
   {
-    return eval_stream.tail(stream, function(thing) {
-        console.log("COUNT(" + thing + ") = " + thing.length);
+    return eval_token.tail(stream, function(thing) {
         return k.tail(thing.length);
       });
   },
 
   MINUS: function(stream, k)
   {
-    return eval_stream.tail(stream, function(n) {
-        console.log("MINUS(" + n.toString() + ") = " + (-n));
+    return eval_token.tail(stream, function(n) {
         return k.tail(-n);
+      });
+  },
+
+  PRINT: function(stream, k)
+  {
+    return eval_token.tail(stream, function(thing) {
+        console.log(thing);
+        return k.tail();
       });
   },
 
   SUM: function(stream, k)
   {
-    return eval_stream.tail(stream, function(n) {
-        console.log("SUM(" + n.toString() + ", ???)");
-        return eval_stream.tail(stream, function(m) {
-            console.log("SUM(" + n.toString() + ", " + m.toString() + " = " +
-              (n + m).toString());
+    return eval_token.tail(stream, function(n) {
+        return eval_token.tail(stream, function(m) {
             return k.tail(n + m);
           });
       });
   },
 };
 
-function eval_string(str)
+// Tokenize and evaluate a string
+function eval_string(str, k)
 {
-  return eval_stream.tco(Object.create(token_stream).init(str), id);
+  var stream = Object.create(token_stream).init(str);
+  return (function eval_stream() {
+    return stream.ended ? k.tail() : eval_token.tail(stream, eval_stream);
+  }).tail();
 }
 
+var readline = require("readline");
+var rli = readline.createInterface(process.stdin, process.stdout);
+rli.on("close", function() {
+    process.stdout.write("\n");
+    process.exit(0);
+  });
 
-console.log("longer > got value: " + eval_string('sum minus count "foo 5') + "\n");
-console.log("numbers > got value: " + eval_string('2 3 4 5') + "\n");
-console.log("quoted > got value: " + eval_string('"he\\llo') + "\n");
-console.log("number > got value: " + eval_string('  23 ') + "\n");
-console.log("arity > got value: " + eval_string('sum 2 3 4 5') + "\n");
-console.log("words > got value: " + eval_string('minus count "foo') + "\n");
-console.log("word > got value: " + eval_string('count "foo') + "\n");
+(function repl()
+{
+  rli.setPrompt("? ");
+  rli.once("line", function(line) { return eval_string.tco(line, repl); });
+  rli.prompt();
+})();
