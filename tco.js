@@ -6,20 +6,13 @@ Function.prototype.tail = function()
   return [this, arguments];
 };
 
-Function.prototype.tco = function()
+Function.prototype.call_cc = function()
 {
   var c = [this, arguments];
   var esc = arguments[arguments.length - 1];
   while (c && c[0] !== esc) c = c[0].apply(this, c[1]);
-  if (c) {
-    return esc.apply(this, c[1]);
-  } else {
-    process.stderr.write("(done)\n");
-  }
+  if (c) return esc.apply(this, c[1]);
 };
-
-function id(x) { return x; }
-function nop() {}
 
 
 function error(message)
@@ -61,7 +54,9 @@ function eval_token(stream, k)
 {
   var m = stream.consume(/^\s+/);
   if (stream.ended) return k.tail();
-  if (m = stream.consume(/^"((?:[^\s\[\]\(\);\\]|(?:\\.))*)/)) {
+  if (m = stream.consume(/^\[/)) {
+    return eval_list.tail(stream, [], k);
+  } else if (m = stream.consume(/^"((?:[^\s\[\]\(\);\\]|(?:\\.))*)/)) {
     return eval_quoted.tail(m[1], k);
   } else if (m = stream
       .consume(/^((\d+(\.\d*)?)|(\d*\.\d+))(?=[\s\[\]\(\)+\-*\/=<>;]|$)/)) {
@@ -70,13 +65,38 @@ function eval_token(stream, k)
       .consume(/^(:?)((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/)) {
     return eval_word.tail(m[0], stream, k);
   } else {
-    report_error(error("Unexpected input " + stream.value));
+    report_error(error("Unexpected input starting from " + stream.value));
+  }
+}
+
+function eval_list(stream, list, k)
+{
+  var m = stream.consume(/^\s+/);
+  if (m = stream.consume(/^\]/)) {
+    return k.tail(list);
+  } else if (m = stream.consume(/^\[/)) {
+    return eval_list.tail(stream, [], function(sublist) {
+        list.push(sublist);
+        return eval_list.tail(stream, list, k);
+      });
+  } else if (m = stream.consume(/^(\d+(\.\d*)?)|(\d*\.\d+)/)) {
+    list.push(parseFloat(m[0]));
+    return eval_list.tail(stream, list, k);
+  } else if (m = stream.consume(/^([^\s\[\]\\]|(\\.))+/)) {
+    list.push(m[0].replace(/\\(.)/g, "$1"));
+    return eval_list.tail(stream, list, k);
   }
 }
 
 function is_any() { return true; }
+function is_list(token) { return token instanceof Array; }
 function is_number(token) { return !isNaN(token); }
-function is_word(token) { return true; } // we don't have lists yet!
+
+function is_word(token)
+{
+  return typeof token === "string" || typeof token === "number" ||
+    typeof token === "boolean";
+}
 
 // Wrapper around eval_token to check the current token against a predicate p;
 // if there is an error (either bubbling up or because the test failed) then
@@ -111,6 +131,7 @@ WORDS =
 {
   // Constructors
 
+  // TODO ()
   WORD: function(stream, k)
   {
     return eval_token_as.tail(stream, is_word, function(word1) {
@@ -120,15 +141,35 @@ WORDS =
       });
   },
 
-  // TODO LIST
-  // TODO SENTENCE
+  // TODO ()
+  LIST: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_any, function(thing1) {
+        return eval_token_as.tail(stream, is_any, function(thing2) {
+            return k.tail([thing1, thing2]);
+          });
+      });
+  },
 
-  // TODO list
+  // TODO SE, ()
+  SENTENCE: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_any, function(thing1) {
+        return eval_token_as.tail(stream, is_any, function(thing2) {
+            return k.tail((is_list(thing1) ? thing1 : [thing1]).concat(thing2));
+          });
+      });
+  },
+
   FPUT: function(stream, k)
   {
     return eval_token_as.tail(stream, is_any, function(thing1) {
         return eval_token_as.tail(stream, is_any, function(thing2) {
-            if (is_word(thing2) && is_word(thing1) && thing1.length === 1) {
+            if (is_list(thing2)) {
+              thing2.unshift(thing1);
+              return k.tail(thing2);
+            } else if (is_word(thing2) &&
+                is_word(thing1) && thing1.length === 1) {
               return k.tail(thing1.toString() + thing2.toString());
             } else {
               return k.tail(error("You made FPUT sad"));
@@ -137,12 +178,15 @@ WORDS =
       });
   },
 
-  // TODO list
   LPUT: function(stream, k)
   {
     return eval_token_as.tail(stream, is_any, function(thing1) {
         return eval_token_as.tail(stream, is_any, function(thing2) {
-            if (is_word(thing2) && is_word(thing1) && thing1.length === 1) {
+            if (is_list(thing2)) {
+              thing2.push(thing1);
+              return k.tail(thing2);
+            } else if (is_word(thing2) &&
+                is_word(thing1) && thing1.length === 1) {
               return k.tail(thing2.toString() + thing1.toString());
             } else {
               return k.tail(error("You made LPUT sad"));
@@ -156,18 +200,21 @@ WORDS =
 
   // Selectors
 
-  // TODO list
   FIRST: function(stream, k)
   {
-    return eval_token_as.tail(stream, is_word, function(thing) {
+    return eval_token_as.tail(stream, is_any, function(thing) {
         if (thing.length === 0) return k.tail(error("Empty input for FIRST"));
         return k.tail(thing[0]);
       });
   },
 
-  // TODO FIRSTS
+  FIRSTS: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_list, function(list) {
+        return k.tail(list.map(function(x) { return x[0]; }));
+      });
+  },
 
-  // TODO list
   LAST: function(stream, k)
   {
     return eval_token_as.tail(stream, is_word, function(thing) {
@@ -180,21 +227,46 @@ WORDS =
   BUTFIRST: function(stream, k)
   {
     return eval_token_as.tail(stream, is_word, function(thing) {
-        if (thing.length === 0) return k.tail(error("Empty input for BUTFIRST"));
-        return k.tail(thing.substr(1));
+        if (thing.length === 0) {
+          return k.tail(error("Empty input for BUTFIRST"));
+        }
+        return k.tail(thing.slice(1));
       });
   },
 
-  // TODO BUTFIRSTS
+  FIRSTS: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_list, function(list) {
+        return k.tail(list.map(function(x) { return x.slice(1); }));
+      });
+  },
 
-  // TODO list, BL
+
+  // TODO BL
   BUTLAST: function(stream, k)
   {
     return eval_token_as.tail(stream, is_word, function(thing) {
-        if (thing.length === 0) return k.tail(error("Empty input for BUTLAST"));
-        return k.tail(thing.substr(0, thing.length - 1));
+        if (thing.length === 0) {
+          return k.tail(error("Empty input for BUTLAST"));
+        }
+        return k.tail(thing.slice(0, thing.length - 1));
       });
   },
+
+  ITEM: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_number, function(index) {
+        return eval_token_as.tail(stream, is_list, function(list) {
+            var item = list[index - 1];
+            if (item === undefined) {
+              return k.tail(error("No item at index " + index));
+            }
+            return k.tail(list[index - 1]);
+          });
+      });
+  },
+
+  // TODO PICK, REMOVE, REMDUP, QUOTED (library)
 
 
 
@@ -226,7 +298,7 @@ WORDS =
   READWORD: function(stream, k)
   {
     rli.setPrompt("word > ");
-    rli.once("line", function(line) { k.tco(line); });
+    rli.once("line", function(line) { k.call_cc(line); });
     rli.prompt();
     // stop evaluation until input is received: don't return any continuation
   },
@@ -266,7 +338,7 @@ function report_error(error)
 function repl()
 {
   rli.setPrompt("? ");
-  rli.once("line", function(line) { return eval_string.tco(line, repl); });
+  rli.once("line", function(line) { return eval_string.call_cc(line, repl); });
   rli.prompt();
 };
 repl();
