@@ -63,7 +63,11 @@ function eval_token(stream, k)
     return eval_number.tail(m[0], k);
   } else if (m = stream
       .consume(/^(:?)((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/)) {
-    return eval_word.tail(m[0], stream, k);
+    if (m[1]) {
+      return eval_word.tail("THING", stream, k, m[2]);
+    } else {
+      return eval_word.tail(m[2], stream, k);
+    }
   } else {
     report_error(error("Unexpected input starting from " + stream.value));
   }
@@ -90,7 +94,7 @@ function eval_list(stream, list, k)
 
 function is_any() { return true; }
 function is_list(token) { return token instanceof Array; }
-function is_number(token) { return !isNaN(token); }
+function is_number(token) { return typeof token === "number"; }
 
 function is_word(token)
 {
@@ -118,12 +122,30 @@ function eval_quoted(q, k) { return k.tail(q.replace(/\\(.)/g, "$1")); }
 
 // Eval a word: find the corresponding function and execute it, getting the
 // arguments from the token stream
-function eval_word(w, stream, k)
+function eval_word(w, stream, k, arg)
 {
   var f = WORDS[w.replace(/\\(.)/g, "$1").toUpperCase()];
   return f ?
-    f.tail(stream, k) :
+    f.tail(stream, k, arg) :
     k.tail(error("I don't know how to " + w));
+}
+
+// Implement EQUALP
+function equalp(thing1, thing2)
+{
+  if (is_number(thing1) && is_number(thing2)) {
+    return thing1 === thing2;
+  } else if (is_word(thing1) && is_word(thing2)) {
+    // TODO CASEIGNOREDP
+    return thing1.toString().toUpperCase() === thing2.toString().toUpperCase();
+  } else if (is_list(thing1) && is_list(thing2) &&
+      thing1.length === thing2.length) {
+    for (var eq = true, i = 0, n = thing1.length; eq && i < n;
+        eq = equalp(thing1[i], thing2[i]), ++i);
+    return eq;
+  } else {
+    return false;
+  }
 }
 
 // Predefined words
@@ -223,7 +245,7 @@ WORDS =
       });
   },
 
-  // TODO list, BF
+  // TODO BF
   BUTFIRST: function(stream, k)
   {
     return eval_token_as.tail(stream, is_word, function(thing) {
@@ -256,22 +278,125 @@ WORDS =
   ITEM: function(stream, k)
   {
     return eval_token_as.tail(stream, is_number, function(index) {
-        return eval_token_as.tail(stream, is_list, function(list) {
-            var item = list[index - 1];
+        return eval_token_as.tail(stream, is_any, function(thing) {
+            var item = thing[index - 1];
             if (item === undefined) {
               return k.tail(error("No item at index " + index));
             }
-            return k.tail(list[index - 1]);
+            return k.tail(thing[index - 1]);
           });
       });
   },
 
   // TODO PICK, REMOVE, REMDUP, QUOTED (library)
+  // Mutators? PUSH, POP, QUEUE, DEQUEUE (library)
 
+  // Predicats
 
+  // TODO WORD?
+  WORDP: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_any, function(thing) {
+        return k.tail(is_word(thing));
+      });
+  },
 
+  // TODO LIST?
+  LISTP: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_any, function(thing) {
+        return k.tail(is_list(thing));
+      });
+  },
 
+  // TODO EMPTY?
+  EMPTYP: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_any, function(thing) {
+        return k.tail(thing.length === 0);
+      });
+  },
 
+  // TODO EQUAL?, =
+  EQUALP: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_any, function(thing1) {
+        return eval_token_as.tail(stream, is_any, function(thing2) {
+            return k.tail(equalp(thing1, thing2));
+          });
+      });
+  },
+
+  // TODO NOTEQUAL?, <>
+  NOTEQUALP: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_any, function(thing1) {
+        return eval_token_as.tail(stream, is_any, function(thing2) {
+            return k.tail(!equalp(thing1, thing2));
+          });
+      });
+  },
+
+  // TODO BEFORE?
+  BEFOREP: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_word, function(word1) {
+        return eval_token_as.tail(stream, is_word, function(word2) {
+            return k.tail(word1.toString() < word2.toString());
+          });
+      });
+  },
+
+  ".EQ": function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_any, function(thing1) {
+        return eval_token_as.tail(stream, is_any, function(thing2) {
+            return typeof thing1 === "object" && typeof thing2 === "object" &&
+              thing1 === thing2;
+          });
+      });
+  },
+
+  // TODO MEMBER?
+  MEMBERP: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_any, function(thing1) {
+        return eval_token_as.tail(stream, is_any, function(thing2) {
+            if (is_list(thing2)) {
+              for (var found = false, i = 0, n = thing2.length; !found && i < n;
+                equalp(thing1, thing2[i]), ++i);
+              return k.tail(found);
+            } else if (is_word(thing1) && thing1.toString().length === 1) {
+              return k.tail(thing2.toString().indexOf(thing1.toString()) >= 0);
+            } else {
+              return k.tail(false);
+            }
+          });
+      });
+  },
+
+  // TODO SUBSTRING?
+  SUBSTRINGP: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_any, function(thing1) {
+        return eval_token_as.tail(stream, is_any, function(thing2) {
+            return k.tail(is_word(thing1) && is_word(thing2) &&
+              thing2.toString().indexOf(thing1.toString()) >= 0);
+          });
+      });
+  },
+
+  // TODO NUMBER?
+  NUMBERP: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_any, function(thing) {
+        return k.tail(is_number(thing));
+      });
+  },
+
+  // TODO VBARREDP, BACKSLASHEDP
+
+  // Queries
 
   COUNT: function(stream, k)
   {
@@ -279,6 +404,10 @@ WORDS =
         return k.tail(thing.length);
       });
   },
+
+
+
+
 
   MINUS: function(stream, k)
   {
@@ -310,6 +439,17 @@ WORDS =
             return k.tail(n + m);
           });
       });
+  },
+
+  THING: function(stream, k, name)
+  {
+    if (typeof name !== "undefined") {
+      return k.tail(error(name + " has no value"));
+    } else {
+      return eval_token_as.tail(stream, is_word, function(name) {
+          return k.tail(error(name + " has no value"));
+        });
+    }
   },
 };
 
