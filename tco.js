@@ -1,19 +1,11 @@
-// Originally by Spencer Tipping; see
-// http://github.com/spencertipping/js-in-ten-minutes
+// TODO:
+//   * premature end of input
+//   * parens/slurp
+//   * infix
+//   * function declaration
+//   * vbarred
 
-Function.prototype.tail = function()
-{
-  return [this, arguments];
-};
-
-Function.prototype.call_cc = function()
-{
-  var c = [this, arguments];
-  var esc = arguments[arguments.length - 1];
-  while (c && c[0] !== esc) c = c[0].apply(this, c[1]);
-  if (c) return esc.apply(this, c[1]);
-};
-
+require("populus");
 
 function error(message)
 {
@@ -25,49 +17,79 @@ var token_stream =
 {
   init: function(str)
   {
-    this.consumed = "";
     this.value = str;
     this.ended = !str.length;
     return this;
   },
 
-  // Consume the input matching rx and return true if there was a match
-  // rx must be anchored!
-  // TODO consume a symbol rather than a regex so that we can use an already
-  // tokenized input (e.g. a list), and also ensure that all our regexes are
-  // anchored
-  consume: function(rx)
+  // Consume the input matching the named regex (see below) and return the
+  // match if there was any.
+  consume: function(rx_name)
   {
-    var m = this.value.match(rx);
-    if (m) {
-      var l = m[0].length;
-      this.consumed += this.value.substr(0, l);
-      this.value = this.value.substr(l);
-    }
+    var m = this.value.match(this[rx_name]);
+    if (m) this.value = this.value.substr(m[0].length);
     this.ended = !this.value.length;
     return m;
   },
+
+  // Look but don't consume (to be used for infix)
+  lookahead: function(rx_name)
+  {
+    return this.value.match(this[rx_name]);
+  },
+
+  to_number: function(w)
+  {
+    if (this.list_number.test(w)) {
+      var n = parseFloat(w);
+      if (!isNaN(n)) return n;
+    }
+    return w;
+  },
+
+  is_number: function(w)
+  {
+    return this.list_number.test(w);
+  },
+
+  whitespace:    /^\s+/,
+  quoted:        /^"((?:[^\s\[\]\(\);\\]|(?:\\.))*)/,
+  number:        /^((\d+(\.\d*)?)|(\d*\.\d+))(?=[\s\[\]\(\)+\-*\/=<>;]|$)/,
+  word_or_thing: /^(:?)((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/,
+  infix_1:       /^(<=|>=|<>|=|<|>)/,
+  infix_2:       /^(\+|\-)/,
+  infix_3:       /^(\*|\/)/,
+  list_begin:    /^\[/,
+  list_end:      /^\]/,
+  list_number:   /^(\d+(\.\d*)?)|(\d*\.\d+)/,
+  list_word:     /^([^\s\[\]\\]|(\\.))+/,
+  paren_begin:   /^\(/,
+  paren_end:     /^\)/,
 };
 
 // Eval a token from the stream
 function eval_token(stream, k)
 {
-  var m = stream.consume(/^\s+/);
+  var m = stream.consume("whitespace");
   if (stream.ended) return k.tail();
-  if (m = stream.consume(/^\[/)) {
+  if (m = stream.consume("list_begin")) {
     return eval_list.tail(stream, [], k);
-  } else if (m = stream.consume(/^"((?:[^\s\[\]\(\);\\]|(?:\\.))*)/)) {
+  } else if (m = stream.consume("quoted")) {
     return eval_quoted.tail(m[1], k);
-  } else if (m = stream
-      .consume(/^((\d+(\.\d*)?)|(\d*\.\d+))(?=[\s\[\]\(\)+\-*\/=<>;]|$)/)) {
+  } else if (m = stream.consume("number")) {
     return eval_number.tail(m[0], k);
-  } else if (m = stream
-      .consume(/^(:?)((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/)) {
+  } else if (m = stream.consume("word_or_thing")) {
     if (m[1]) {
       return eval_word.tail("THING", stream, k, m[2]);
     } else {
       return eval_word.tail(m[2], stream, k);
     }
+  } else if (m = stream.consume("infix_1")) {
+    return eval_infix(m[0], 1, k);
+  } else if (m = stream.consume("infix_2")) {
+    return eval_infix(m[0], 2, k);
+  } else if (m = stream.consume("infix_3")) {
+    return eval_infix(m[0], 3, k);
   } else {
     report_error(error("Unexpected input starting from " + stream.value));
   }
@@ -75,18 +97,18 @@ function eval_token(stream, k)
 
 function eval_list(stream, list, k)
 {
-  var m = stream.consume(/^\s+/);
-  if (m = stream.consume(/^\]/)) {
+  var m = stream.consume("whitespace");
+  if (m = stream.consume("list_end")) {
     return k.tail(list);
-  } else if (m = stream.consume(/^\[/)) {
+  } else if (m = stream.consume("list_begin")) {
     return eval_list.tail(stream, [], function(sublist) {
         list.push(sublist);
         return eval_list.tail(stream, list, k);
       });
-  } else if (m = stream.consume(/^(\d+(\.\d*)?)|(\d*\.\d+)/)) {
+  } else if (m = stream.consume("list_number")) {
     list.push(parseFloat(m[0]));
     return eval_list.tail(stream, list, k);
-  } else if (m = stream.consume(/^([^\s\[\]\\]|(\\.))+/)) {
+  } else if (m = stream.consume("list_word")) {
     list.push(m[0].replace(/\\(.)/g, "$1"));
     return eval_list.tail(stream, list, k);
   }
@@ -94,7 +116,11 @@ function eval_list(stream, list, k)
 
 function is_any() { return true; }
 function is_list(token) { return token instanceof Array; }
-function is_number(token) { return typeof token === "number"; }
+
+function is_number(token)
+{
+  return typeof token === "number" || token_stream.is_number(token);
+}
 
 function is_word(token)
 {
@@ -102,14 +128,19 @@ function is_word(token)
     typeof token === "boolean";
 }
 
-// Wrapper around eval_token to check the current token against a predicate p;
-// if there is an error (either bubbling up or because the test failed) then
-// report it, otherwise go through the normal continuation
+// Wrapper around eval_next_token to check the current token against a
+// predicate p; if there is an error (either bubbling up or because the test
+// failed) then report it, otherwise go through the normal continuation
 function eval_token_as(stream, p, k)
 {
   return eval_token.tail(stream, function(token) {
+      if (typeof token === "undefined") {
+        return report_error(error("Premature end of input"));
+      }
       if (token.is_error) return report_error(token);
-      if (!p(token)) return report_error(error("Unexpected value " + token));
+      if (p && !p(token)) {
+        return report_error(error("Unexpected value " + token));
+      }
       return k.tail(token);
     });
 }
@@ -130,11 +161,16 @@ function eval_word(w, stream, k, arg)
     k.tail(error("I don't know how to " + w));
 }
 
+// Eval an infix operator
+function eval_infix(op, precedemce, k)
+{
+}
+
 // Implement EQUALP
 function equalp(thing1, thing2)
 {
   if (is_number(thing1) && is_number(thing2)) {
-    return thing1 === thing2;
+    return token_stream.to_number(thing1) === token_stream.to_number(thing2);
   } else if (is_word(thing1) && is_word(thing2)) {
     // TODO CASEIGNOREDP
     return thing1.toString().toUpperCase() === thing2.toString().toUpperCase();
@@ -279,11 +315,11 @@ WORDS =
   {
     return eval_token_as.tail(stream, is_number, function(index) {
         return eval_token_as.tail(stream, is_any, function(thing) {
-            var item = thing[index - 1];
+            var item = thing[stream.to_number(index) - 1];
             if (item === undefined) {
               return k.tail(error("No item at index " + index));
             }
-            return k.tail(thing[index - 1]);
+            return k.tail(item);
           });
       });
   },
@@ -406,15 +442,102 @@ WORDS =
   },
 
 
+  // Numeric operations
 
+  // TODO (), +
+  SUM: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_number, function(n) {
+        return eval_token_as.tail(stream, is_number, function(m) {
+            return k.tail(stream.to_number(n) + stream.to_number(m));
+          });
+      });
+  },
 
+  // TODO -
+  DIFFERENCE: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_number, function(n) {
+        return eval_token_as.tail(stream, is_number, function(m) {
+            return k.tail(stream.to_number(n) - stream.to_number(m));
+          });
+      });
+  },
 
+  // TODO -
   MINUS: function(stream, k)
   {
     return eval_token_as.tail(stream, is_number, function(n) {
-        return k.tail(-n);
+        return k.tail(-stream.to_number(n));
       });
   },
+
+  // TODO (), *
+  PRODUCT: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_number, function(n) {
+        return eval_token_as.tail(stream, is_number, function(m) {
+            return k.tail(stream.to_number(n) * stream.to_number(m));
+          });
+      });
+  },
+
+  // TODO (), /
+  QUOTIENT: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_number, function(n) {
+        return eval_token_as.tail(stream, is_number, function(m) {
+            return k.tail(stream.to_number(n) / stream.to_number(m));
+          });
+      });
+  },
+
+  // Predicates
+
+  // TODO LESS?, <
+  LESSP: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_number, function(n) {
+        return eval_token_as.tail(stream, is_number, function(m) {
+            return k.tail(stream.to_number(n) < stream.to_number(m));
+          });
+      });
+  },
+
+  // TODO GREATER?, >
+  GREATERP: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_number, function(n) {
+        return eval_token_as.tail(stream, is_number, function(m) {
+            return k.tail(stream.to_number(n) > stream.to_number(m));
+          });
+      });
+  },
+
+  // TODO LESSEQUAL?, <=
+  LESSEQUALP: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_number, function(n) {
+        return eval_token_as.tail(stream, is_number, function(m) {
+            return k.tail(stream.to_number(n) <= stream.to_number(m));
+          });
+      });
+  },
+
+  // TODO GREATEREQUAL?, >=
+  GREATEREQUALP: function(stream, k)
+  {
+    return eval_token_as.tail(stream, is_number, function(n) {
+        return eval_token_as.tail(stream, is_number, function(m) {
+            return k.tail(stream.to_number(n) >= stream.to_number(m));
+          });
+      });
+  },
+
+
+
+
+
 
   PRINT: function(stream, k)
   {
@@ -432,14 +555,6 @@ WORDS =
     // stop evaluation until input is received: don't return any continuation
   },
 
-  SUM: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_number, function(n) {
-        return eval_token_as.tail(stream, is_number, function(m) {
-            return k.tail(n + m);
-          });
-      });
-  },
 
   THING: function(stream, k, name)
   {
@@ -458,7 +573,14 @@ function eval_string(str, k)
 {
   var stream = Object.create(token_stream).init(str);
   return (function eval_stream() {
-    return stream.ended ? k.tail() : eval_token.tail(stream, eval_stream);
+    return stream.ended ? k.tail() : eval_token.tail(stream, function(v) {
+        if (typeof v !== "undefined") {
+          return report_error.tail(v.message ? v :
+            error("I don't know what to do with " + v));
+        } else {
+          return eval_stream.tail();
+        }
+      })
   }).tail();
 }
 
