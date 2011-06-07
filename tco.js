@@ -1,11 +1,10 @@
 // TODO:
-//   * premature end of input
 //   * parens/slurp
 //   * infix
 //   * function declaration
 //   * vbarred
 
-require("populus");
+var populus = require("populus");
 
 function error(message)
 {
@@ -13,13 +12,14 @@ function error(message)
 }
 
 // Token stream is a wrapper around a string since strings are immutable in JS
-var token_stream =
-{
+var token_stream = populus.object.create({
   init: function(str)
   {
-    this.value = str;
-    this.ended = !str.length;
-    return this;
+    var self = this.call_super("init");
+    self.value = str;
+    self.ended = !str.length;
+    self.nesting = 0;
+    return self;
   },
 
   // Consume the input matching the named regex (see below) and return the
@@ -28,6 +28,9 @@ var token_stream =
   {
     var m = this.value.match(this[rx_name]);
     if (m) this.value = this.value.substr(m[0].length);
+    if (m) {
+      console.log("Consumed {0}: <{1}>".fmt(rx_name, m[0]));
+    }
     this.ended = !this.value.length;
     return m;
   },
@@ -55,6 +58,7 @@ var token_stream =
   whitespace:    /^\s+/,
   quoted:        /^"((?:[^\s\[\]\(\);\\]|(?:\\.))*)/,
   number:        /^((\d+(\.\d*)?)|(\d*\.\d+))(?=[\s\[\]\(\)+\-*\/=<>;]|$)/,
+  word:          /^(?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+/,
   word_or_thing: /^(:?)((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/,
   infix_1:       /^(<=|>=|<>|=|<|>)/,
   infix_2:       /^(\+|\-)/,
@@ -65,7 +69,7 @@ var token_stream =
   list_word:     /^([^\s\[\]\\]|(\\.))+/,
   paren_begin:   /^\(/,
   paren_end:     /^\)/,
-};
+});
 
 // Eval a token from the stream
 function eval_token(stream, k)
@@ -74,6 +78,22 @@ function eval_token(stream, k)
   if (stream.ended) return k.tail();
   if (m = stream.consume("list_begin")) {
     return eval_list.tail(stream, [], k);
+  } else if (m = stream.consume("list_end")) {
+    return k.tail(error("Unexpected |]|"));
+  /*} else if (m = stream.consume("paren_begin")) {
+    ++stream.nesting;
+    stream.consume("whitespace");
+    // TODO get more input with \ here
+    if (stream.ended) return k.tail(error("Unexpected end of input"));
+    if (m = stream.consume("word")) {
+      return eval_word_slurp.tail(m[0], stream, k);
+    } else {
+      return k.tail(error("Expected procedure in parens"));
+    }
+  } else if (m = stream.consume("paren_close")) {
+    if (stream.nesting === 0) return k.tail(error("Unexpected |)|"));
+    --stream.nesting;
+    return eval_token.tail(stream, k);*/
   } else if (m = stream.consume("quoted")) {
     return eval_quoted.tail(m[1], k);
   } else if (m = stream.consume("number")) {
@@ -98,7 +118,17 @@ function eval_token(stream, k)
 function eval_list(stream, list, k)
 {
   var m = stream.consume("whitespace");
-  if (m = stream.consume("list_end")) {
+  if (stream.ended) {
+    // We're not finished! Get more tokens
+    rli.setPrompt("[ ");
+    rli.once("line", function(line) {
+        eval_list.call_cc(token_stream.$new(line), list, k);
+      });
+    console.log("... need more in list;", k);
+    rli.prompt();
+    return;
+  } else if (m = stream.consume("list_end")) {
+    console.log("... done with list;", k);
     return k.tail(list);
   } else if (m = stream.consume("list_begin")) {
     return eval_list.tail(stream, [], function(sublist) {
@@ -162,7 +192,7 @@ function eval_word(w, stream, k, arg)
 }
 
 // Eval an infix operator
-function eval_infix(op, precedemce, k)
+function eval_infix(op, precedence, k)
 {
 }
 
@@ -571,7 +601,7 @@ WORDS =
 // Tokenize and evaluate a string
 function eval_string(str, k)
 {
-  var stream = Object.create(token_stream).init(str);
+  var stream = token_stream.$new(str);
   return (function eval_stream() {
     return stream.ended ? k.tail() : eval_token.tail(stream, function(v) {
         if (typeof v !== "undefined") {
