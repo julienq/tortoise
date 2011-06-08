@@ -29,9 +29,6 @@ var token_stream = populus.object.create({
   {
     var m = this.value.match(this[rx_name]);
     if (m) this.value = this.value.substr(m[0].length);
-    if (m) {
-      console.log("Consumed {0}: <{1}>".fmt(rx_name, m[0]));
-    }
     this.ended = !this.value.length;
     return m;
   },
@@ -44,11 +41,7 @@ var token_stream = populus.object.create({
 
   to_number: function(w)
   {
-    if (this.list_number.test(w)) {
-      var n = parseFloat(w);
-      if (!isNaN(n)) return n;
-    }
-    return w;
+    return this.list_number.test(w) ? parseFloat(w) : NaN;
   },
 
   is_number: function(w)
@@ -81,20 +74,20 @@ function eval_token(stream, k)
     return eval_list.tail(stream, [], k);
   } else if (m = stream.consume("list_end")) {
     return k.tail(error("Unexpected |]|"));
-  /*} else if (m = stream.consume("paren_begin")) {
+  } else if (m = stream.consume("paren_begin")) {
     ++stream.nesting;
     stream.consume("whitespace");
     // TODO get more input with \ here
     if (stream.ended) return k.tail(error("Unexpected end of input"));
     if (m = stream.consume("word")) {
-      return eval_word_slurp.tail(m[0], stream, k);
+      return eval_word_greedy.tail(m[0], stream, k);
     } else {
       return k.tail(error("Expected procedure in parens"));
     }
-  } else if (m = stream.consume("paren_close")) {
+  } else if (m = stream.consume("paren_end")) {
     if (stream.nesting === 0) return k.tail(error("Unexpected |)|"));
     --stream.nesting;
-    return eval_token.tail(stream, k);*/
+    return k.tail({ paren_end: true });
   } else if (m = stream.consume("quoted")) {
     return eval_quoted.tail(m[1], k);
   } else if (m = stream.consume("number")) {
@@ -103,7 +96,7 @@ function eval_token(stream, k)
     if (m[1]) {
       return eval_word.tail("THING", stream, k, m[2]);
     } else {
-      return eval_word_.tail(m[2], stream, k);
+      return eval_word.tail(m[2], stream, k);
     }
   } else if (m = stream.consume("infix_1")) {
     return eval_infix(m[0], 1, k);
@@ -125,11 +118,9 @@ function eval_list(stream, list, k)
     rli.once("line", function(line) {
         eval_list.call_cc(token_stream.$new(line), list, k);
       });
-    console.log("... need more in list;", k);
     rli.prompt();
     return;
   } else if (m = stream.consume("list_end")) {
-    console.log("... done with list;", k);
     return k.tail(list);
   } else if (m = stream.consume("list_begin")) {
     return eval_list.tail(stream, [], function(sublist) {
@@ -145,7 +136,6 @@ function eval_list(stream, list, k)
   }
 }
 
-function is_any() { return true; }
 function is_list(token) { return token instanceof Array; }
 
 function is_number(token)
@@ -182,26 +172,15 @@ function eval_number(n, k) { return k.tail(parseFloat(n)); }
 // Eval a quoted word: simply return its value
 function eval_quoted(q, k) { return k.tail(q.replace(/\\(.)/g, "$1")); }
 
-// Eval a word: find the corresponding function and execute it, getting the
-// arguments from the token stream
+// Find function for this word; if there is one, get the default number of
+// arguments and execute it
 function eval_word(w, stream, k, arg)
 {
-  var f = WORDS[w.replace(/\\(.)/g, "$1").toUpperCase()];
-  return f ?
-    f.tail(stream, k, arg) :
-    k.tail(error("I don't know how to " + w));
-}
-
-// Find function for this word; if there is one, get the required number of
-// arguments and execute it
-function eval_word_(w, stream, k)
-{
-  var def = WORDS_[w.replace(/\\(.)/g, "$1").toUpperCase()];
+  var def = WORDS[w.replace(/\\(.)/g, "$1").toUpperCase()];
   if (!def) k.tail(error("I don't know how to " + w));
-  // Get the default number of arguments
   var get_args = function(n, args) {
     if (n === 0) {
-      return k.tail(def.run.apply(stream, args));
+      return def.run.tail(args, k);
     } else {
       return eval_token.tail(stream, function(token) {
           if (typeof token === "undefined") {
@@ -213,7 +192,29 @@ function eval_word_(w, stream, k)
         });
     }
   };
-  return get_args.tail(def.default, []);
+  return arg !== undefined ? get_args.tail(def.default - 1, [arg]) :
+    get_args.tail(def.default, []);
+}
+
+// Eval between min and max arguments
+function eval_word_greedy(w, stream, k)
+{
+  var def = WORDS[w.replace(/\\(.)/g, "$1").toUpperCase()];
+  if (!def) k.tail(error("I don't know how to " + w));
+  var get_args = function(n, args) {
+    return eval_token.tail(stream, function(token) {
+        if (typeof token === "object" && token.paren_end) {
+          if (n < def.min) return k.tail(error("Not enough arguments"));
+          if (n > def.max) return k.tail(error("Too many arguments"));
+          return def.run.tail(args, k);
+        } else {
+          if (token.is_error) return report_error(token);
+          args.push(token)
+          return get_args.tail(n + 1, args);
+        }
+      });
+  };
+  return get_args.tail(0, []);
 }
 
 // Eval an infix operator
@@ -239,411 +240,57 @@ function equalp(thing1, thing2)
   }
 }
 
-WORDS_ =
+// Stringify a token
+function stringify(token)
 {
-  WORD: { min: 0, max: Infinity, "default": 2,
-    run: function()
-    {
-      return [].reduce.call(arguments,
-          function(acc, w) { return acc + w.toString(); }, "");
+  return is_list(token) ? token.map(stringify).join(" ") : token.toString();
+}
+
+var WORDS =
+{
+  WORD: { min: 0, max: Infinity, "default": 2, run: function(args, k) {
+      return k.tail(args
+          .reduce(function(acc, w) { return acc + w.toString(); }, ""));
     } },
 
-  LIST: { min: 0, max: Infinity, "default": 2,
-    run: function()
-    {
-      return [].reduce.call(arguments,
-          function(acc, thing) { acc.push(thing); return acc; }, []);
+  LIST: { min: 0, max: Infinity, "default": 2, run: function(args, k) {
+      return k.tail(args
+          .reduce(function(acc, thing) { acc.push(thing); return acc; }, []));
     } },
 
-  PRINT: { min: 0, max: Infinity, "default": 1,
-    run: function() {
-      [].forEach.call(arguments, function(x) { console.log(x); });
+  SENTENCE: { min: 0, max: Infinity, "default": 2, run: function(args, k) {
+      return k.tail(args
+          .reduce(function(acc, thing) { return acc.concat(thing); }, []));
+    } },
+
+  FPUT: { min: 2, max: 2, "default": 2, run: function(args, k) {
+    } },
+
+  QUOTIENT: { min: 1, max: 2, "default": 2, run: function(args, k) {
+      var n = args.length === 1 ? 1 : token_stream.to_number(args[0]);
+      var m = token_stream.to_number(args[args.length === 1 ? 0 : 1]);
+      // check isNaN(n), isNaN(m), m !== 0
+      return k.tail(n / m);
+    } },
+
+  PRINT: { min: 0, max: Infinity, "default": 1, run: function(args, k) {
+      args.forEach(function(x) { console.log(stringify(x)); });
+      return k.tail();
+    } },
+
+  READWORD: { min: 0, max: 0, "default": 0, run: function(args, k)
+    {
+      rli.setPrompt("word > ");
+      rli.once("line", function(line) { return k.call_cc(line); });
+      rli.prompt();
+    } },
+
+  THING: { min: 1, max: 1, "default": 1, run: function(args, k) {
+      var name = args[0];
+      return k.tail(error("{0} has no value".fmt(name)));
     } },
 };
 
-// Predefined words
-WORDS =
-{
-  // Constructors
-
-  // TODO ()
-  WORD: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_word, function(word1) {
-        return eval_token_as.tail(stream, is_word, function(word2) {
-            return k.tail(word1.toString() + word2.toString());
-          });
-      });
-  },
-
-  // TODO ()
-  LIST: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_any, function(thing1) {
-        return eval_token_as.tail(stream, is_any, function(thing2) {
-            return k.tail([thing1, thing2]);
-          });
-      });
-  },
-
-  // TODO SE, ()
-  SENTENCE: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_any, function(thing1) {
-        return eval_token_as.tail(stream, is_any, function(thing2) {
-            return k.tail((is_list(thing1) ? thing1 : [thing1]).concat(thing2));
-          });
-      });
-  },
-
-  FPUT: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_any, function(thing1) {
-        return eval_token_as.tail(stream, is_any, function(thing2) {
-            if (is_list(thing2)) {
-              thing2.unshift(thing1);
-              return k.tail(thing2);
-            } else if (is_word(thing2) &&
-                is_word(thing1) && thing1.length === 1) {
-              return k.tail(thing1.toString() + thing2.toString());
-            } else {
-              return k.tail(error("You made FPUT sad"));
-            }
-          });
-      });
-  },
-
-  LPUT: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_any, function(thing1) {
-        return eval_token_as.tail(stream, is_any, function(thing2) {
-            if (is_list(thing2)) {
-              thing2.push(thing1);
-              return k.tail(thing2);
-            } else if (is_word(thing2) &&
-                is_word(thing1) && thing1.length === 1) {
-              return k.tail(thing2.toString() + thing1.toString());
-            } else {
-              return k.tail(error("You made LPUT sad"));
-            }
-          });
-      });
-  },
-
-  // TODO COMBINE, REVERSE, GENSYM (library)
-
-
-  // Selectors
-
-  FIRST: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_any, function(thing) {
-        if (thing.length === 0) return k.tail(error("Empty input for FIRST"));
-        return k.tail(thing[0]);
-      });
-  },
-
-  FIRSTS: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_list, function(list) {
-        return k.tail(list.map(function(x) { return x[0]; }));
-      });
-  },
-
-  LAST: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_word, function(thing) {
-        if (thing.length === 0) return k.tail(error("Empty input for LAST"));
-        return k.tail(thing[thing.length - 1]);
-      });
-  },
-
-  // TODO BF
-  BUTFIRST: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_word, function(thing) {
-        if (thing.length === 0) {
-          return k.tail(error("Empty input for BUTFIRST"));
-        }
-        return k.tail(thing.slice(1));
-      });
-  },
-
-  FIRSTS: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_list, function(list) {
-        return k.tail(list.map(function(x) { return x.slice(1); }));
-      });
-  },
-
-
-  // TODO BL
-  BUTLAST: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_word, function(thing) {
-        if (thing.length === 0) {
-          return k.tail(error("Empty input for BUTLAST"));
-        }
-        return k.tail(thing.slice(0, thing.length - 1));
-      });
-  },
-
-  ITEM: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_number, function(index) {
-        return eval_token_as.tail(stream, is_any, function(thing) {
-            var item = thing[stream.to_number(index) - 1];
-            if (item === undefined) {
-              return k.tail(error("No item at index " + index));
-            }
-            return k.tail(item);
-          });
-      });
-  },
-
-  // TODO PICK, REMOVE, REMDUP, QUOTED (library)
-  // Mutators? PUSH, POP, QUEUE, DEQUEUE (library)
-
-  // Predicats
-
-  // TODO WORD?
-  WORDP: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_any, function(thing) {
-        return k.tail(is_word(thing));
-      });
-  },
-
-  // TODO LIST?
-  LISTP: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_any, function(thing) {
-        return k.tail(is_list(thing));
-      });
-  },
-
-  // TODO EMPTY?
-  EMPTYP: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_any, function(thing) {
-        return k.tail(thing.length === 0);
-      });
-  },
-
-  // TODO EQUAL?, =
-  EQUALP: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_any, function(thing1) {
-        return eval_token_as.tail(stream, is_any, function(thing2) {
-            return k.tail(equalp(thing1, thing2));
-          });
-      });
-  },
-
-  // TODO NOTEQUAL?, <>
-  NOTEQUALP: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_any, function(thing1) {
-        return eval_token_as.tail(stream, is_any, function(thing2) {
-            return k.tail(!equalp(thing1, thing2));
-          });
-      });
-  },
-
-  // TODO BEFORE?
-  BEFOREP: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_word, function(word1) {
-        return eval_token_as.tail(stream, is_word, function(word2) {
-            return k.tail(word1.toString() < word2.toString());
-          });
-      });
-  },
-
-  ".EQ": function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_any, function(thing1) {
-        return eval_token_as.tail(stream, is_any, function(thing2) {
-            return typeof thing1 === "object" && typeof thing2 === "object" &&
-              thing1 === thing2;
-          });
-      });
-  },
-
-  // TODO MEMBER?
-  MEMBERP: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_any, function(thing1) {
-        return eval_token_as.tail(stream, is_any, function(thing2) {
-            if (is_list(thing2)) {
-              for (var found = false, i = 0, n = thing2.length; !found && i < n;
-                equalp(thing1, thing2[i]), ++i);
-              return k.tail(found);
-            } else if (is_word(thing1) && thing1.toString().length === 1) {
-              return k.tail(thing2.toString().indexOf(thing1.toString()) >= 0);
-            } else {
-              return k.tail(false);
-            }
-          });
-      });
-  },
-
-  // TODO SUBSTRING?
-  SUBSTRINGP: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_any, function(thing1) {
-        return eval_token_as.tail(stream, is_any, function(thing2) {
-            return k.tail(is_word(thing1) && is_word(thing2) &&
-              thing2.toString().indexOf(thing1.toString()) >= 0);
-          });
-      });
-  },
-
-  // TODO NUMBER?
-  NUMBERP: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_any, function(thing) {
-        return k.tail(is_number(thing));
-      });
-  },
-
-  // TODO VBARREDP, BACKSLASHEDP
-
-  // Queries
-
-  COUNT: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_any, function(thing) {
-        return k.tail(thing.length);
-      });
-  },
-
-
-  // Numeric operations
-
-  // TODO (), +
-  SUM: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_number, function(n) {
-        return eval_token_as.tail(stream, is_number, function(m) {
-            return k.tail(stream.to_number(n) + stream.to_number(m));
-          });
-      });
-  },
-
-  // TODO -
-  DIFFERENCE: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_number, function(n) {
-        return eval_token_as.tail(stream, is_number, function(m) {
-            return k.tail(stream.to_number(n) - stream.to_number(m));
-          });
-      });
-  },
-
-  // TODO -
-  MINUS: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_number, function(n) {
-        return k.tail(-stream.to_number(n));
-      });
-  },
-
-  // TODO (), *
-  PRODUCT: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_number, function(n) {
-        return eval_token_as.tail(stream, is_number, function(m) {
-            return k.tail(stream.to_number(n) * stream.to_number(m));
-          });
-      });
-  },
-
-  // TODO (), /
-  QUOTIENT: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_number, function(n) {
-        return eval_token_as.tail(stream, is_number, function(m) {
-            return k.tail(stream.to_number(n) / stream.to_number(m));
-          });
-      });
-  },
-
-  // Predicates
-
-  // TODO LESS?, <
-  LESSP: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_number, function(n) {
-        return eval_token_as.tail(stream, is_number, function(m) {
-            return k.tail(stream.to_number(n) < stream.to_number(m));
-          });
-      });
-  },
-
-  // TODO GREATER?, >
-  GREATERP: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_number, function(n) {
-        return eval_token_as.tail(stream, is_number, function(m) {
-            return k.tail(stream.to_number(n) > stream.to_number(m));
-          });
-      });
-  },
-
-  // TODO LESSEQUAL?, <=
-  LESSEQUALP: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_number, function(n) {
-        return eval_token_as.tail(stream, is_number, function(m) {
-            return k.tail(stream.to_number(n) <= stream.to_number(m));
-          });
-      });
-  },
-
-  // TODO GREATEREQUAL?, >=
-  GREATEREQUALP: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_number, function(n) {
-        return eval_token_as.tail(stream, is_number, function(m) {
-            return k.tail(stream.to_number(n) >= stream.to_number(m));
-          });
-      });
-  },
-
-
-
-
-
-
-  PRINT: function(stream, k)
-  {
-    return eval_token_as.tail(stream, is_any, function(thing) {
-        console.log(thing);
-        return k.tail();
-      });
-  },
-
-  READWORD: function(stream, k)
-  {
-    rli.setPrompt("word > ");
-    rli.once("line", function(line) { k.call_cc(line); });
-    rli.prompt();
-    // stop evaluation until input is received: don't return any continuation
-  },
-
-
-  THING: function(stream, k, name)
-  {
-    if (typeof name !== "undefined") {
-      return k.tail(error(name + " has no value"));
-    } else {
-      return eval_token_as.tail(stream, is_word, function(name) {
-          return k.tail(error(name + " has no value"));
-        });
-    }
-  },
-};
 
 // Tokenize and evaluate a string
 function eval_string(str, k)
