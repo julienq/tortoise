@@ -13,6 +13,7 @@ function error(message)
 
 // Token stream is a wrapper around a string since strings are immutable in JS
 var token_stream = populus.object.create({
+
   init: function(str)
   {
     var self = this.call_super("init");
@@ -102,7 +103,7 @@ function eval_token(stream, k)
     if (m[1]) {
       return eval_word.tail("THING", stream, k, m[2]);
     } else {
-      return eval_word.tail(m[2], stream, k);
+      return eval_word_.tail(m[2], stream, k);
     }
   } else if (m = stream.consume("infix_1")) {
     return eval_infix(m[0], 1, k);
@@ -191,6 +192,30 @@ function eval_word(w, stream, k, arg)
     k.tail(error("I don't know how to " + w));
 }
 
+// Find function for this word; if there is one, get the required number of
+// arguments and execute it
+function eval_word_(w, stream, k)
+{
+  var def = WORDS_[w.replace(/\\(.)/g, "$1").toUpperCase()];
+  if (!def) k.tail(error("I don't know how to " + w));
+  // Get the default number of arguments
+  var get_args = function(n, args) {
+    if (n === 0) {
+      return k.tail(def.run.apply(stream, args));
+    } else {
+      return eval_token.tail(stream, function(token) {
+          if (typeof token === "undefined") {
+            return report_error(error("Premature end of input"));
+          }
+          if (token.is_error) return report_error(token);
+          args.push(token)
+          return get_args.tail(n - 1, args);
+        });
+    }
+  };
+  return get_args.tail(def.default, []);
+}
+
 // Eval an infix operator
 function eval_infix(op, precedence, k)
 {
@@ -213,6 +238,28 @@ function equalp(thing1, thing2)
     return false;
   }
 }
+
+WORDS_ =
+{
+  WORD: { min: 0, max: Infinity, "default": 2,
+    run: function()
+    {
+      return [].reduce.call(arguments,
+          function(acc, w) { return acc + w.toString(); }, "");
+    } },
+
+  LIST: { min: 0, max: Infinity, "default": 2,
+    run: function()
+    {
+      return [].reduce.call(arguments,
+          function(acc, thing) { acc.push(thing); return acc; }, []);
+    } },
+
+  PRINT: { min: 0, max: Infinity, "default": 1,
+    run: function() {
+      [].forEach.call(arguments, function(x) { console.log(x); });
+    } },
+};
 
 // Predefined words
 WORDS =
