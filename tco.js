@@ -1,8 +1,9 @@
 // TODO:
-//   * parens/slurp
 //   * infix
 //   * function declaration
 //   * vbarred
+//   * multiline
+//   * errors
 
 var populus = require("populus");
 
@@ -18,10 +19,12 @@ var token_stream = populus.object.create({
   {
     var self = this.call_super("init");
     self.value = str;
-    self.ended = !str.length;
     self.nesting = 0;
     return self;
   },
+
+  // True when the end of the stream has been reached
+  ended: { get: function() { return !this.value.length; } },
 
   // Consume the input matching the named regex (see below) and return the
   // match if there was any.
@@ -29,7 +32,6 @@ var token_stream = populus.object.create({
   {
     var m = this.value.match(this[rx_name]);
     if (m) this.value = this.value.substr(m[0].length);
-    this.ended = !this.value.length;
     return m;
   },
 
@@ -69,44 +71,63 @@ var token_stream = populus.object.create({
 function eval_token(stream, k)
 {
   var m = stream.consume("whitespace");
-  if (stream.ended) return k.tail();
-  if (m = stream.consume("list_begin")) {
-    return eval_list.tail(stream, [], k);
-  } else if (m = stream.consume("list_end")) {
-    return k.tail(error("Unexpected |]|"));
-  } else if (m = stream.consume("paren_begin")) {
+  if (stream.ended) {
+    if (stream.nesting > 0) {
+      rli.setPrompt("( ");
+      rli.once("line", function(line) {
+          stream.value += line;
+          eval_token.call_cc(stream, k);
+        });
+      rli.prompt();
+      return;
+    } else {
+      return k.tail();
+    }
+  }
+  if (m = stream.consume("list_begin")) return eval_list.tail(stream, [], k);
+  if (m = stream.consume("list_end")) return k.tail(error("Unexpected |]|"));
+  if (m = stream.consume("paren_begin")) {
     ++stream.nesting;
     stream.consume("whitespace");
-    // TODO get more input with \ here
-    if (stream.ended) return k.tail(error("Unexpected end of input"));
-    if (m = stream.consume("word")) {
-      return eval_word_greedy.tail(m[0], stream, k);
+    var greedy = function()
+    {
+      if (m = stream.consume("word")) {
+        return eval_word_greedy.tail(m[0], stream, k);
+      } else {
+        return k.tail(error("Expected procedure in parens"));
+      }
+    };
+    if (stream.ended) {
+      rli.setPrompt("( ");
+      rli.once("line", function(line) {
+          stream.value += line;
+          greedy.call_cc();
+        });
+      rli.prompt();
+      return;
     } else {
-      return k.tail(error("Expected procedure in parens"));
+      return greedy.tail(stream);
     }
-  } else if (m = stream.consume("paren_end")) {
+  }
+  if (m = stream.consume("list_end")) return k.tail(error("Unexpected |]|"));
+  if (m = stream.consume("paren_end")) {
     if (stream.nesting === 0) return k.tail(error("Unexpected |)|"));
     --stream.nesting;
     return k.tail({ paren_end: true });
-  } else if (m = stream.consume("quoted")) {
-    return eval_quoted.tail(m[1], k);
-  } else if (m = stream.consume("number")) {
-    return eval_number.tail(m[0], k);
-  } else if (m = stream.consume("word_or_thing")) {
+  }
+  if (m = stream.consume("quoted")) return eval_quoted.tail(m[1], k);
+  if (m = stream.consume("number")) return eval_number.tail(m[0], k);
+  if (m = stream.consume("word_or_thing")) {
     if (m[1]) {
       return eval_word.tail("THING", stream, k, m[2]);
     } else {
       return eval_word.tail(m[2], stream, k);
     }
-  } else if (m = stream.consume("infix_1")) {
-    return eval_infix(m[0], 1, k);
-  } else if (m = stream.consume("infix_2")) {
-    return eval_infix(m[0], 2, k);
-  } else if (m = stream.consume("infix_3")) {
-    return eval_infix(m[0], 3, k);
-  } else {
-    report_error(error("Unexpected input starting from " + stream.value));
   }
+  if (m = stream.consume("infix_1")) return eval_infix(m[0], 1, k);
+  if (m = stream.consume("infix_2")) return eval_infix(m[0], 2, k);
+  if (m = stream.consume("infix_3")) return eval_infix(m[0], 3, k);
+  return k.tail(error("Unexpected input starting from " + stream.value));
 }
 
 function eval_list(stream, list, k)
@@ -116,21 +137,24 @@ function eval_list(stream, list, k)
     // We're not finished! Get more tokens
     rli.setPrompt("[ ");
     rli.once("line", function(line) {
-        eval_list.call_cc(token_stream.$new(line), list, k);
+        stream.value += line;
+        eval_list.call_cc(stream, list, k);
       });
     rli.prompt();
     return;
-  } else if (m = stream.consume("list_end")) {
-    return k.tail(list);
-  } else if (m = stream.consume("list_begin")) {
+  }
+  if (m = stream.consume("list_end")) return k.tail(list);
+  if (m = stream.consume("list_begin")) {
     return eval_list.tail(stream, [], function(sublist) {
         list.push(sublist);
         return eval_list.tail(stream, list, k);
       });
-  } else if (m = stream.consume("list_number")) {
+  }
+  if (m = stream.consume("list_number")) {
     list.push(parseFloat(m[0]));
     return eval_list.tail(stream, list, k);
-  } else if (m = stream.consume("list_word")) {
+  }
+  if (m = stream.consume("list_word")) {
     list.push(m[0].replace(/\\(.)/g, "$1"));
     return eval_list.tail(stream, list, k);
   }
@@ -147,23 +171,6 @@ function is_word(token)
 {
   return typeof token === "string" || typeof token === "number" ||
     typeof token === "boolean";
-}
-
-// Wrapper around eval_next_token to check the current token against a
-// predicate p; if there is an error (either bubbling up or because the test
-// failed) then report it, otherwise go through the normal continuation
-function eval_token_as(stream, p, k)
-{
-  return eval_token.tail(stream, function(token) {
-      if (typeof token === "undefined") {
-        return report_error(error("Premature end of input"));
-      }
-      if (token.is_error) return report_error(token);
-      if (p && !p(token)) {
-        return report_error(error("Unexpected value " + token));
-      }
-      return k.tail(token);
-    });
 }
 
 // Eval a number: simply return its value
@@ -192,8 +199,8 @@ function eval_word(w, stream, k, arg)
         });
     }
   };
-  return arg !== undefined ? get_args.tail(def.default - 1, [arg]) :
-    get_args.tail(def.default, []);
+  return arg !== undefined ? get_args.tail(def["default"] - 1, [arg]) :
+    get_args.tail(def["default"], []);
 }
 
 // Eval between min and max arguments
@@ -263,8 +270,14 @@ var WORDS =
           .reduce(function(acc, thing) { return acc.concat(thing); }, []));
     } },
 
-  FPUT: { min: 2, max: 2, "default": 2, run: function(args, k) {
-    } },
+  /*FPUT: { min: 2, max: 2, "default": 2, run: function(args, k) {
+      if (is_list(args[1])) {
+
+      } else if (is_word(args[0] && args[0].length === 1) {
+
+      } else {
+      }
+    } },*/
 
   QUOTIENT: { min: 1, max: 2, "default": 2, run: function(args, k) {
       var n = args.length === 1 ? 1 : token_stream.to_number(args[0]);
