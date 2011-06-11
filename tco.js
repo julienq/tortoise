@@ -19,19 +19,47 @@ var token_stream = populus.object.create({
   {
     var self = this.call_super("init");
     self.value = str;
-    self.nesting = 0;
+    self.paren_nesting = 0;
+    self.list_nesting = 0;
     return self;
   },
 
   // True when the end of the stream has been reached
   ended: { get: function() { return !this.value.length; } },
 
+  // Eat whitespace and comments to be ready to consume an actual token
+  advance: function(k)
+  {
+    var m = this.consume("whitespace");
+    if (stream.ended) {
+      if (m[4] === "~") {
+        return prompt(stream, "~ ", function(stream) {
+          });
+      }
+      if (m[4] === "\\") {
+        return prompt(stream, "\\ ", function(stream) {
+          });
+      }
+      if (stream.paren_nesting > 0) {
+        return prompt(stream, "( ", function(stream) {
+            return tokenize.tail(stream, k);
+          });
+      }
+    }
+    return k.tail(m);
+  },
+
   // Consume the input matching the named regex (see below) and return the
   // match if there was any.
-  consume: function(rx_name)
+  consume: function(rx_name, k)
   {
     var m = this.value.match(this[rx_name]);
-    if (m) this.value = this.value.substr(m[0].length);
+    if (m) {
+      this.value = this.value.substr(m[0].length);
+      return advance.tail(function(m_) {
+
+      })
+    }
     return m;
   },
 
@@ -51,7 +79,8 @@ var token_stream = populus.object.create({
     return this.list_number.test(w);
   },
 
-  whitespace:    /^\s+/,
+
+  whitespace:    /^(\s*)(;(?:([^~\\]|[\\~].)*([\\~]?)$))?/,
   quoted:        /^"((?:[^\s\[\]\(\);\\]|(?:\\.))*)/,
   number:        /^((\d+(\.\d*)?)|(\d*\.\d+))(?=[\s\[\]\(\)+\-*\/=<>;]|$)/,
   word:          /^(?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+/,
@@ -66,6 +95,25 @@ var token_stream = populus.object.create({
   paren_begin:   /^\(/,
   paren_end:     /^\)/,
 });
+
+function tokenize(stream, k)
+{
+  stream.advance(function());
+  var m;
+  if (m = stream.consume("quoted")) return k.tail("quoted", m[1]);
+  if (m = stream.consume("number")) return k.tail("number", parseFloat(m[1]));
+  if (m = stream.consume("word")) return k.tail("word", m[0].toUpperCase());
+  if (m = stream.consume("paren_begin")) {
+    ++stream.paren_nesting
+    return k.tail("(", stream.paren_nesting);
+  }
+  if (m = stream.consume("paren_end")) {
+    --stream.paren_nesting
+    return k.tail(")", stream.paren_nesting);
+  }
+}
+
+/*
 
 // Eval a token from the stream
 function eval_token(stream, k)
@@ -269,16 +317,6 @@ var WORDS =
       return k.tail(args
           .reduce(function(acc, thing) { return acc.concat(thing); }, []));
     } },
-
-  /*FPUT: { min: 2, max: 2, "default": 2, run: function(args, k) {
-      if (is_list(args[1])) {
-
-      } else if (is_word(args[0] && args[0].length === 1) {
-
-      } else {
-      }
-    } },*/
-
   QUOTIENT: { min: 1, max: 2, "default": 2, run: function(args, k) {
       var n = args.length === 1 ? 1 : token_stream.to_number(args[0]);
       var m = token_stream.to_number(args[args.length === 1 ? 0 : 1]);
@@ -305,28 +343,21 @@ var WORDS =
 };
 
 
-// Tokenize and evaluate a string
-function eval_string(str, k)
+// Evaluate a line of input
+function eval_input(line, k)
 {
-  var stream = token_stream.$new(str);
+  var stream = token_stream.$new(line);
   return (function eval_stream() {
-    return stream.ended ? k.tail() : eval_token.tail(stream, function(v) {
-        if (typeof v !== "undefined") {
-          return report_error.tail(v.message ? v :
-            error("I don't know what to do with " + v));
-        } else {
-          return eval_stream.tail();
+    if (stream.ended) return k.tail();
+    return eval_word.tail(stream, function(error) {
+        if (error) {
+          console.log("Error: {0}".fmt(error.message));
+          return k.tail();
         }
-      })
+        return eval_stream.tail();
+      });
   }).tail();
 }
-
-var readline = require("readline");
-var rli = readline.createInterface(process.stdin, process.stdout);
-rli.on("close", function() {
-    process.stdout.write("\n");
-    process.exit(0);
-  });
 
 function report_error(error)
 {
@@ -337,7 +368,37 @@ function report_error(error)
 function repl()
 {
   rli.setPrompt("? ");
-  rli.once("line", function(line) { return eval_string.call_cc(line, repl); });
+  rli.once("line", function(line) { return eval_input.call_cc(line, repl); });
   rli.prompt();
 };
 repl();
+*/
+
+var readline = require("readline");
+var rli = readline.createInterface(process.stdin, process.stdout);
+rli.on("close", function() {
+    process.stdout.write("\n");
+    process.exit(0);
+  });
+
+function prompt(stream, p, f)
+{
+  rli.setPrompt(p);
+  rli.once("line", function(line) {
+      stream.value += line;
+      f.call_cc(stream);
+    });
+  rli.prompt();
+}
+
+(function tokenize_input(stream) {
+  prompt(stream, "? ", function(stream) {
+      var show_token = function(type, value)
+      {
+        if (!type) return tokenize_input.tail(stream);
+        console.log('{0}::{1}'.fmt(type, value));
+        return tokenize.tail(stream, show_token);
+      };
+      return tokenize.tail(stream, show_token);
+    });
+})(token_stream.$new(""));
