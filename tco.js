@@ -1,4 +1,5 @@
 // TODO:
+//   * fix tokenizer once and for all
 //   * infix
 //   * function declaration
 //   * vbarred
@@ -13,6 +14,7 @@ function error(message)
 }
 
 // Token stream is a wrapper around a string since strings are immutable in JS
+// Keep track of levels of nesting so that it know if more input is required
 var token_stream = populus.object.create({
 
   init: function(str)
@@ -27,38 +29,15 @@ var token_stream = populus.object.create({
   // True when the end of the stream has been reached
   ended: { get: function() { return !this.value.length; } },
 
-  // Eat whitespace and comments to be ready to consume an actual token
-  advance: function(k)
-  {
-    var m = this.consume("whitespace");
-    if (stream.ended) {
-      if (m[4] === "~") {
-        return prompt(stream, "~ ", function(stream) {
-          });
-      }
-      if (m[4] === "\\") {
-        return prompt(stream, "\\ ", function(stream) {
-          });
-      }
-      if (stream.paren_nesting > 0) {
-        return prompt(stream, "( ", function(stream) {
-            return tokenize.tail(stream, k);
-          });
-      }
-    }
-    return k.tail(m);
-  },
-
   // Consume the input matching the named regex (see below) and return the
   // match if there was any.
-  consume: function(rx_name, k)
+  consume: function(rx_name)
   {
     var m = this.value.match(this[rx_name]);
     if (m) {
+      //console.log('*** {0} =~ "{1}"'.fmt(rx_name, this.value));
+      //console.log("***", m);
       this.value = this.value.substr(m[0].length);
-      return advance.tail(function(m_) {
-
-      })
     }
     return m;
   },
@@ -79,12 +58,11 @@ var token_stream = populus.object.create({
     return this.list_number.test(w);
   },
 
-
-  whitespace:    /^(\s*)(;(?:([^~\\]|[\\~].)*([\\~]?)$))?/,
-  quoted:        /^"((?:[^\s\[\]\(\);\\]|(?:\\.))*)/,
-  number:        /^((\d+(\.\d*)?)|(\d*\.\d+))(?=[\s\[\]\(\)+\-*\/=<>;]|$)/,
-  word:          /^(?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+/,
-  word_or_thing: /^(:?)((?:[^\s\[\]\(\)+\-*\/=<>;\\]|(?:\\.))+)/,
+  whitespace:    /^(\s*)(?:;(?:[^\\~]|[\\~].)*)?(?:([\\~]?)$)?/,
+  quoted:        /^"((?:[^\s\[\]\(\);\\\~]|(?:\\.))*)/,
+  number:        /^((\d+(\.\d*)?)|(\d*\.\d+))(?=[\s\[\]\(\)+\-*\/=<>;\\\~]|$)/,
+  word:          /^(?:[^\s\[\]\(\)+\-*\/=<>;\\\~]|(?:\\.))+/,
+  word_or_thing: /^(:?)((?:[^\s\[\]\(\)+\-*\/=<>;\\\~]|(?:\\.))+)/,
   infix_1:       /^(<=|>=|<>|=|<|>)/,
   infix_2:       /^(\+|\-)/,
   infix_3:       /^(\*|\/)/,
@@ -96,21 +74,77 @@ var token_stream = populus.object.create({
   paren_end:     /^\)/,
 });
 
+// Eat whitespace and comments to be ready to consume an actual token
+// If we reach the end of input and require more (because the line ended with
+// \ or ~ or there are unclosed parens) prompt for more input.
+function advance_stream(stream, k)
+{
+  var m = stream.consume("whitespace");
+  if (stream.ended) {
+    if (m[2] === "~") {
+      return prompt(stream, "~ ",
+          function(stream) { k.call_cc(m[1].length === 0); });
+    }
+    if (m[2] === "\\") {
+      // Todo add literal \ to input
+      return prompt(stream, "\\ ", function(stream) { k.call_cc(false); });
+    }
+    if (stream.paren_nesting > 0) {
+      return prompt(stream, "( ", function(stream) { k.call_cc(false); });
+    }
+    if (stream.list_nesting > 0) {
+      return prompt(stream, "[ ", function(stream) { k.call_cc(false); });
+    }
+  }
+  return k.tail();
+}
+
 function tokenize(stream, k)
 {
-  stream.advance(function());
-  var m;
-  if (m = stream.consume("quoted")) return k.tail("quoted", m[1]);
-  if (m = stream.consume("number")) return k.tail("number", parseFloat(m[1]));
-  if (m = stream.consume("word")) return k.tail("word", m[0].toUpperCase());
-  if (m = stream.consume("paren_begin")) {
-    ++stream.paren_nesting
-    return k.tail("(", stream.paren_nesting);
-  }
-  if (m = stream.consume("paren_end")) {
-    --stream.paren_nesting
-    return k.tail(")", stream.paren_nesting);
-  }
+  return advance_stream.tail(stream, function() {
+      if (stream.ended) return k.tail();
+      var m;
+      if (m = stream.consume("paren_begin")) {
+        ++stream.paren_nesting
+        return k.tail("( {0}".fmt(stream.paren_nesting));
+      }
+      if (m = stream.consume("paren_end")) {
+        --stream.paren_nesting
+        return k.tail(") {0}".fmt(stream.paren_nesting));
+      }
+      if (m = stream.consume("number")) {
+        return advance_stream.tail(stream, function(unfinished) {
+            if (unfinished) {
+              stream.value = m[0] + stream.value;
+              return k.tail();
+            } else {
+              return k.tail(parseFloat(m[0]));
+            }
+          });
+      }
+      if (m = stream.consume("quoted")) {
+        return advance_stream.tail(stream, function(unfinished) {
+            if (unfinished) {
+              stream.value = m[0] + stream.value;
+              return k.tail();
+            } else {
+              return k.tail(m[1]);
+            }
+          });
+      }
+      if (m = stream.consume("word")) {
+        return advance_stream.tail(stream, function(unfinished) {
+            if (unfinished) {
+              stream.value = m[0] + stream.value;
+              return k.tail();
+            } else {
+              return k.tail(m[0].toUpperCase());
+            }
+          });
+      }
+      return k.tail(error('Unexpected input starting from "{0}"'
+            .fmt(stream.value)));
+    });
 }
 
 /*
@@ -393,10 +427,18 @@ function prompt(stream, p, f)
 
 (function tokenize_input(stream) {
   prompt(stream, "? ", function(stream) {
-      var show_token = function(type, value)
+      var show_token = function(token)
       {
-        if (!type) return tokenize_input.tail(stream);
-        console.log('{0}::{1}'.fmt(type, value));
+        if (typeof token === "undefined") {
+          return stream.ended ? tokenize_input.tail(stream) :
+            tokenize.tail(stream, show_token);
+        }
+        if (token.is_error) {
+          console.log("Error: {0}".fmt(token.message));
+          stream.value = "";
+          return tokenize_input.tail(stream);
+        }
+        console.log(token)
         return tokenize.tail(stream, show_token);
       };
       return tokenize.tail(stream, show_token);
