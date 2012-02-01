@@ -23,112 +23,94 @@ var lexer =
     this.open = [];
     this.input = "";
     this.tokens = [];
+    this.i = 0;
     return this;
   },
 
-  // TODO really read character by character to handle ~, |, ", etc. properly
+  // Get the next token or add to an already created token
   next_token: function()
   {
-    if (this.mode !== "\"") this.input = this.input.replace(/^\s+/, "");
-    var m;
-    if (this.mode === "" || this.mode === "(" || this.mode === "{") {
-      if (this.input[0] === "\"") {
-        this.open.push(this.mode);
-        this.mode = "\"";
-        this.input = this.input.substr(1);
-        return this.next_token();
-      } else if (this.input[0] === "<") {
-        if (this.input[1] === ">") {
-          this.input = this.input.substr(2);
-          return { line: this.line, surface: "<>", value: "<>",
-            type: "infix" };
-        } else if (this.input[1] === "=") {
-          this.input = this.input.substr(2);
-          return { line: this.line, surface: "<=", value: "<=", type: "infix" };
-        } else {
-          this.input = this.input.substr(1);
-          return { line: this.line, surface: "<", value: "<", type: "infix" };
-        }
-      } else if (this.input[0] === ">") {
-        if (this.input[1] === "=") {
-          this.input = this.input.substr(2);
-          return { line: this.line, surface: ">=", value: ">=", type: "infix" };
-        } else {
-          this.input = this.input.substr(1);
-          return { line: this.line, surface: ">", value: ">", type: "infix" };
-        }
-      } else if (this.input[0] === "+" || this.input[0] === "-" ||
-          this.input[0] === "*" || this.input[0] === "/" ||
-          this.input[0] === "=") {
-        this.input = this.input.substr(1);
-        return { line: this.line, surface: this.input[0], value: this.input[0],
-          type: "infix" };
-      } else if (this.input[0] === "[") {
-        this.open.push(this.mode);
-        this.mode = "[";
-        this.input = this.input.substr(1);
-        return { line: this.line, surface: "[", value: "[", type: "[" };
-      } else if (this.input[0] === "]") {
-        throw "Unmatched \"]\"";
-      } else if (this.input[0] === "(") {
-        this.open.push(this.mode);
-        this.mode = "(";
-        this.input = this.input.substr(1);
-        return { line: this.line, surface: "(", value: "(", type: "(" };
-      } else if (this.input[0] === ")") {
-        if (this.mode === "(") {
-          this.mode = this.open.pop();
-          this.input = this.input.substr(1);
-          return { line: this.line, surface: ")", value: ")", type: ")" };
-        } else {
-          throw "Unmatched \")\"";
-        }
-      } else if (this.input[0] === "{") {
-        this.open.push(this.mode);
-        this.mode = "{";
-        this.input = this.input.substr(1);
-        return { line: this.line, surface: "{", value: "{", type: "{" };
-      } else if (this.input[0] === "}") {
-        if (this.mode === "{") {
-          this.mode = this.open.pop();
-          this.input = this.input.substr(1);
-          return { line: this.line, surface: "}", value: "}", type: "}" };
-        } else {
-          throw "Unmatched \"}\"";
-        }
-      } else if (m = this.input.match(/^[^\s\[\]\(\)\{\}\+\-\*\/=<>]+/)) {
-        this.input = this.input.substr(m[0].length);
-        return { line: this.line, surface: m[0], value: m[0].toUpperCase(),
-          type: "word" };
-      }
-    } else if (this.mode === "[") {
-      if (m = this.input.match(/^[^\s\[\]]+/)) {
-        this.input = this.input.substr(m[0].length);
-        return { line: this.line, surface: m[0], value: m[0].toUpperCase(),
-          type: "word" };
-      } else if (this.input[0] === "[") {
-        this.open.push(this.mode);
-        this.mode = "[";
-        this.input = this.input.substr(1);
-        return { line: this.line, surface: "[", value: "[", type: "[" };
-      } else if (this.input[0] === "]") {
-        this.mode = this.open.pop();
-        this.input = this.input.substr(1);
-        return { line: this.line, surface: "]", value: "]", type: "]" };
-      }
-    } else if (this.mode === "\"") {
-      if (m = this.input.match(/^[^\s\[\]\(\)]*/)) {
-        this.mode = this.open.pop();
-        this.input = this.input.substr(m[0].length);
-        return { line: this.line, surface: "\"" + m[0], value: m[0],
-          type: "quoted" };
-      }
+    if (this.mode === "~") this.mode = this.open.pop();
+    var l = this.input.length;
+    for (; this.i < l && /\s/.test(this.input[this.i]); ++this.i) {
+      if (this.input[this.i] === "\n") ++this.line;
     }
+    if (this.i >= l) return;
+    var c = this.input[this.i++];
+    var token = { line: this.line };
+    if (c === "(" || c === "[" || c === "{") {
+      this.open.push(this.mode);
+      this.mode = token.value = token.type = token.surface = c;
+      return token;
+    } else if (c === ")" || c === "]" || c === "}") {
+      if ((this.mode === "(" && c === ")") ||
+          (this.mode === "[" && c === "]") ||
+          (this.mode === "{" && c === "}")) {
+        this.mode = this.open.pop();
+        token.value = token.type = token.surface = c;
+        return token;
+      } else {
+        throw "Unmatched \"{0}\"".fmt(c);
+      }
+    } else if (c === "\"" && this.mode !== "[") {
+      token.value = "";
+      token.surface = c;
+      token.type = "quoted";
+    } else if (c === "<" && this.mode !== "[") {
+      if (this.input[this.i] === "=" || this.input[this.i] === ">") {
+        c += this.input[this.i++];
+      }
+      token.value = token.surface = c;
+      token.type = "infix";
+      return token;
+    } else if (c === ">" && this.mode !== "[") {
+      if (this.input[this.i] === "=") c += this.input[this.i++];
+      token.value = token.surface = c;
+      token.type = "infix";
+      return token;
+    } else if ((c === "+" || c === "-" || c === "*" || c === "/" || c === "=")
+        && this.mode !== "[") {
+      token.value = token.surface = c;
+      token.type = "infix";
+      return token;
+    } else if (c === "~" && (this.input[this.i] === "\n" || this.i === l)) {
+      // TODO preserve the tilde for readline
+      if (this.input[this.i] === "\n") ++this.i;
+      this.open.push(this.mode);
+      this.mode = "~";
+      return;
+    } else {
+      token.value = this.mode === "" ? c.toUpperCase() : c;
+      token.surface = c;
+      token.type = "word";
+    }
+    while (this.i < l) {
+      c = this.input[this.i];
+      if (c === "~" && (this.input[this.i] === "\n" || this.i === l - 1)) {
+        // TODO continue reading this word after the line break
+        if (this.input[this.i] === "\n") ++this.i;
+        this.open.push(this.mode);
+        this.mode = "~";
+        return token;
+      }
+      if ((this.mode === "" && (/\s/.test(c) || c === "[" || c === "]" ||
+            c === "(" || c === ")" || c === "{" || c === "}" || c == "+" ||
+            c === "-" || c === "*" || c === "/" || c === "=" || c == "<" ||
+            c === ">")) ||
+          (this.mode === "[" && (/\s/.test(c) || c === "[" || c === "]"))) {
+        return token;
+      }
+      token.surface += c;
+      token.value += this.mode === "" ? c.toUpperCase() : c;
+      ++this.i;
+    }
+    if (token.surface) return token;
   },
 
   tokenize: function(line, f)
   {
     ++this.line;
+    this.i = 0;
     this.input = line;
     var token;
     do {
