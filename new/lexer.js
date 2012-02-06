@@ -15,20 +15,23 @@ function prompt(p, f)
   rli.prompt();
 }
 
-var lexer = Object.create(logo.lexer).init();
+var parser = Object.create(logo.parser).init();
 
 function repl(line)
 {
-  lexer.tokenize(line + "\n", function(p, tokens) {
+  parser.tokenize(line + "\n", function(p, tokens) {
       if (tokens) {
-        console.log("{0}\t".fmt(lexer.line), tokens.map(function(t) {
-            return t.type === "quoted" ? "\033[00;46m{0}\033[00m"
-              .fmt(t.value || " ") : "\033[00;47m{0}\033[00m".fmt(t.value);
+        console.log("{0}\t".fmt(parser.line), tokens.map(function(t) {
+            return t.type === "word" ? "\033[00;46m{0}\033[00m"
+              .fmt(t.value || " ") :
+                t.type === "number" ?  "\033[00;42m{0}\033[00m".fmt(t.value) :
+                  "\033[00;47m{0}\033[00m".fmt(t.value);
           }).join(" "), tokens.length);
         prompt("{0} ".fmt(p), repl);
       } else {
         // TODO fix this!
-        prompt("{0} ".fmt(p), function(line_) { lexer.tokenize(line_, repl); });
+        prompt("{0} ".fmt(p),
+          function(line_) { parser.tokenize(line_, repl); });
       }
     });
 }
