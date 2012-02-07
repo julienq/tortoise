@@ -23,6 +23,11 @@ function repl(line)
       if (tokens) {
         console.log("{0}\t{1} (x{2})"
           .fmt(parser.line, tokens.join(" "), tokens.length));
+        try {
+          parser.parse_tokens(tokens);
+        } catch(e) {
+          console.log(e);
+        }
       }
       prompt("{0} ".fmt(p), repl);
     });
