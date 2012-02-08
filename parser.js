@@ -15,19 +15,22 @@ function prompt(p, f)
   rli.prompt();
 }
 
+var tokenizer = Object.create(logo.tokenizer).init();
 var parser = Object.create(logo.parser).init();
+
+// Add the primitive functions
+parser.add_function("SUM", 2);
+parser.add_function("FIRST", 1);
+// And the primitive commands
+parser.add_command("PRINT", 1);
 
 function repl(line)
 {
-  parser.tokenize(line + "\n", function(p, tokens) {
+  tokenizer.tokenize(line + "\n", function(p, tokens) {
       if (tokens) {
         console.log("{0}\t{1} (x{2})"
-          .fmt(parser.line, tokens.join(" "), tokens.length));
-        try {
-          parser.parse_tokens(tokens);
-        } catch(e) {
-          console.log(e);
-        }
+          .fmt(tokenizer.line, tokens.join(" "), tokens.length));
+        console.log(parser.parse_tokens(tokens));
       }
       prompt("{0} ".fmt(p), repl);
     });

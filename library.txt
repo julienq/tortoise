@@ -1,0 +1,41 @@
+Constructors
+
+[ ] MDARRAY sizelist (MDARRAY sizelist origin)
+[ ] COMBINE thing1 thing2
+[ ] REVERSE list
+[ ] GENSYM
+
+
+Selectors
+
+[ ] MDITEM indexlist array
+[ ] PICK list
+[ ] REMOVE thing list
+[ ] REMDUP list
+[ ] QUOTED thing
+
+
+Mutators
+
+[ ] (c) MDSETITEM indexlist array value
+[ ] (c) PUSH stackname thing
+[ ] POP stackname
+[ ] (c) QUEUE queuename thing
+[ ] DEQUEUE queuename
+
+
+Predicates
+
+[ ] BACKSLASHEDP, BACKSLASHED? char
+
+
+File Access
+
+[ ] FILEP, FILE? filename
+
+(Graphics)
+
+
+Variable definition
+
+[ ] LOCALMAKE varname value

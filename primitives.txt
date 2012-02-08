@@ -1,0 +1,199 @@
+Constructors
+
+[ ] WORD word1 word2 *
+[ ] LIST thing1 thing2 *
+[ ] SENTENCE, SE thing1 thing2 *
+[ ] FPUT thing list
+[ ] LPUT thing list
+[ ] ARRAY size (ARRAY size origin)
+[ ] LISTTOARRAY list (LISTTOARRAY list origin)
+[ ] ARRAYTOLIST array
+
+
+Selectors
+
+[ ] FIRST thing
+[ ] FIRSTS list
+[ ] LAST wordorlist
+[ ] BUTFIRST, BF wordorlist
+[ ] BUTFIRSTS, BFS list
+[ ] BUTLAST, BL wordorlist
+[ ] ITEM index thing
+
+
+Mutators
+
+[ ] (c) SETITEM index array value
+[ ] (c) .SETFIRST list value
+[ ] (c) .SETBF list value
+[ ] (c) .SETITEM index array value
+
+
+Predicates
+
+[ ] WORDP, WORD? thing
+[ ] LISTP, LIST? thing
+[ ] ARRAYP, ARRAY? thing
+[ ] EMPTYP, EMPTY? thing
+[ ] EQUALP, EQUAL? thing1 thing2 (thing1 = thing2)
+[ ] NOTEQUALP, NOTEQUAL? thing1 thing2 (thing1 <> thing2)
+[ ] BEFOREP, BEFORE? word1 word2
+[ ] .EQ thing1 thing2
+[ ] MEMBERP, MEMBER? thing1 thing2
+[ ] SUBSTRINGP, SUBSTRING? thing1 thing2
+[ ] NUMBERP, NUMBER? thing
+[ ] VBARREDP, VBARRED? char
+
+
+Queries
+
+[ ] COUNT thing
+[ ] ASCII char
+[ ] RAWASCII char
+[ ] CHAR int
+[ ] MEMBER thing1 thing2
+[ ] LOWERCASE word
+[ ] UPPERCASE word
+[ ] STANDOUT thing
+[ ] PARSE word
+[ ] RUNPARSE wordorlist
+
+
+Transmitters
+
+[ ] (c) PRINT, PR thing *
+[ ] (c) TYPE thing *
+[ ] (c) SHOW thing *
+
+
+Receivers
+
+[ ] READLIST, RL
+[ ] READWORD, RW
+[ ] READRAWLINE
+[ ] READCHARS, RCS num
+[ ] SHELL command (SHELL command wordflag)
+
+
+File Access
+
+[ ] (c) SETPREFIX string
+[ ] PREFIX
+[ ] (c) OPENREAD filename
+[ ] (c) OPENWRITE filename
+[ ] (c) OPENAPPEND filename
+[ ] (c) OPENUPDATE filename
+[ ] (c) CLOSE filename
+[ ] ALLOPEN
+[ ] (c) CLOSEALL
+[ ] (c) ERASEFILE, ERF filename
+[ ] (c) DRIBBLE
+[ ] (c) NODRIBBLE
+[ ] (c) SETREAD filename
+[ ] (c) SETWRITE filename
+[ ] READER
+[ ] WRITER
+[ ] (c) SETREADPOS charpos
+[ ] (c) SETWRITEPOS charpos
+[ ] READPOS
+[ ] WRITEPOS
+[ ] EOFP, EOF?
+
+
+Terminal Access
+
+[ ] KEYP, KEY?
+[ ] (c) CLEARTEXT, CT
+[ ] (c) SETCURSOR vector
+[ ] CURSOR
+[ ] (c) SETMARGINS vector
+[ ] (c) SETTEXTCOLOR, SETTC foreground background
+[ ] (c) INCREASEFONT
+[ ] (c) DECREASEFONT
+[ ] (c) SETTEXTSIZE height
+[ ] TEXTSIZE
+[ ] (c) SETFONT fontname
+
+
+Arithmetic
+
+[ ] SUM num1 num2 * (num1 + num2)
+[ ] DIFFERENCE num1 num2 * (num1 - num2)
+[ ] MINUS num (- num)
+[ ] PRODUCT num1 num2 * (num1 * num2)
+[ ] QUOTIENT num1 num2 * (num1 / num2)
+[ ] REMAINDER num1 num2
+[ ] INT num
+[ ] ROUND num
+[ ] SQRT num
+[ ] POWER num1 num2
+[ ] EXP num
+[ ] LOG10 num
+[ ] LN num
+[ ] SIN degrees
+[ ] RADSIN radians
+[ ] COS degrees
+[ ] RADCOS radians
+[ ] ARCTAN num (ARCTAN x y)
+[ ] RADARCTAN num (RADARCTAN x y)
+[ ] ISEQ from to
+[ ] RSEQ from to count
+
+
+Predicates
+
+[ ] LESSP, LESS? num1 num2 (num1 < num2)
+[ ] GREATERP, GREATER? num1 num2 (num > num2)
+[ ] LESSEQUALP, LESSEQUAL? num1 num2 (num1 <= num2)
+[ ] GREATEREQUALP, GREATERQUAL? num1 num2 (num1 >= num2)
+
+
+Random numbers
+
+[ ] RANDOM num (RANDOM start end)
+[ ] RERANDOM (RERANDOM seed)
+
+
+Print formatting
+
+[ ] FORM num width precision
+
+
+Bitwise operations
+
+[ ] BITAND num1 num2 *
+[ ] BITOR num1 num2 *
+[ ] BITXOR num1 num2 *
+[ ] BITNOT num
+[ ] ASHIFT num1 num2
+[ ] LSHIFT num1 num2
+
+
+Logical operations
+
+[ ] AND tf1 tf2
+[ ] OR tf1 tf2
+[ ] NOT tf
+
+
+(Graphics)
+
+
+Procedure definition
+
+[ ] (c; special form) TO procname :input1 :input2 ...
+[ ] (c) DEFINE procname text
+[ ] TEXT procname
+[ ] FULLTEXT procname
+[ ] (c) COPYDEF newname oldname
+
+
+Variable definition
+
+[ ] (c) MAKE varname value
+[ ] (c) NAME value varname
+[ ] (c) LOCAL varname *, LOCAL varnamelist
+[ ] THING varname, :quoted.varname
+[ ] GLOBAL varname *, GLOBAL varnamelist
+
+(...)

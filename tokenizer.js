@@ -15,14 +15,14 @@ function prompt(p, f)
   rli.prompt();
 }
 
-var parser = Object.create(logo.parser).init();
+var tokenizer = Object.create(logo.tokenizer).init();
 
 function repl(line)
 {
-  parser.tokenize(line + "\n", function(p, tokens) {
+  tokenizer.tokenize(line + "\n", function(p, tokens) {
       if (tokens) {
         console.log("{0}\t{1} (x{2})"
-          .fmt(parser.line, tokens.join(" "), tokens.length));
+          .fmt(tokenizer.line, tokens.join(" "), tokens.length));
       }
       prompt("{0} ".fmt(p), repl);
     });
