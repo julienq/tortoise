@@ -33,7 +33,15 @@ File Access
 
 [ ] FILEP, FILE? filename
 
-(Graphics)
+
+Pen and background control
+
+[ ] SETPEN list
+
+
+Pen queries
+
+[ ] PEN
 
 
 Variable definition

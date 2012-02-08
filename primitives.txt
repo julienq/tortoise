@@ -176,7 +176,93 @@ Logical operations
 [ ] NOT tf
 
 
-(Graphics)
+Turtle motion
+
+[ ] (c) FORWARD, FD dist
+[ ] (c) BACK, BK dist
+[ ] (c) LEFT, LT degrees
+[ ] (c) RIGHT, RT degrees
+[ ] (c) SETPOS pos
+[ ] (c) SETXY x y
+[ ] (c) SETX x
+[ ] (c) SETHEADING, SETH degrees
+[ ] (c) HOME
+[ ] (c) ARC angle radius
+
+
+Turtle motion queries
+
+[ ] POS
+[ ] XCOR
+[ ] YCOR
+[ ] HEADING
+[ ] TOWARDS pos
+[ ] SCRUNCH
+
+
+Turtle and window control
+
+[ ] SHOWTURTLE, ST
+[ ] HIDETURTLE, HT
+[ ] CLEAN
+[ ] CLEARSCREEN, CS
+[ ] WRAP
+[ ] WINDOW
+[ ] FENCE
+[ ] FILL
+[ ] FILLED
+[ ] LABEL
+[ ] (c) SETLABELHEIGHT
+[ ] TEXTSCREEN, TS
+[ ] FULLSCREEN, FS
+[ ] SPLITSCREEN, SS
+[ ] SETSCRUNCH xscale yscale
+[ ] (c) REFRESH
+[ ] (c) NOREFRESH
+
+
+Turtle and window queries
+
+[ ] SHOWNP, SHOWN?
+[ ] SCREENMODE
+[ ] TURTLEMODE
+[ ] LABELSIZE
+
+
+Pen and background control
+
+[ ] PENDOWN, PD
+[ ] PENUP, PU
+[ ] PENPAINT, PPT
+[ ] PENERASE, PE
+[ ] PENREVERSE, PX
+[ ] SETPENCOLOR, SETPC colornumber.or.rgblist
+[ ] SETPALETTE colornumber rgblist
+[ ] SETPENSIZE size
+[ ] SETPENPATTERN pattern
+[ ] SETBACKGROUND, SETBG colornumber.or.rgblist
+
+
+Pen queries
+
+[ ] PENDOWNP, PENDOWN?
+[ ] PENMODE
+[ ] PENCOLOR, PC
+[ ] PALETTE colornumber
+[ ] PENSIZE
+[ ] PENPATTERN
+[ ] BACKGROUND, BG
+[ ] SAVEPICT filename
+[ ] LOADPICT filename
+[ ] EPSPICT filename
+
+
+Mouse queries
+
+[ ] MOUSEPOS
+[ ] CLICKPOS
+[ ] BUTTONP, BUTTON?
+[ ] BUTTON
 
 
 Procedure definition
