@@ -17,10 +17,10 @@ Selectors
 
 Mutators
 
-[ ] (c) MDSETITEM indexlist array value
-[ ] (c) PUSH stackname thing
+[ ] MDSETITEM indexlist array value
+[ ] PUSH stackname thing
 [ ] POP stackname
-[ ] (c) QUEUE queuename thing
+[ ] QUEUE queuename thing
 [ ] DEQUEUE queuename
 
 
@@ -47,3 +47,60 @@ Pen queries
 Variable definition
 
 [ ] LOCALMAKE varname value
+
+
+Inspection
+
+[ ] PON varname, PON varnamelist
+[ ] POPL plname, POPL plnamelist
+[ ] POTS
+
+
+Workspace control
+
+[ ] ERN varname, ERN varnamelist
+[ ] ERPL plname, ERPL plnamelist
+[ ] BURYALL
+[ ] BURYNAME varname, BURYNAME varnamelist
+[ ] UNBURYALL
+[ ] UNBURYNAME varname, UNBURYNAME varnamelist
+[ ] EDALL
+[ ] EDPS
+[ ] EDNS
+[ ] EDPLS
+[ ] EDN varname, EDN varnamelist
+[ ] EDPL plname, EDPL plnamelist
+[ ] SAVEL contentslist filename
+
+
+Control structures
+
+[ ] IGNORE vlaue
+[ ] ` list
+[ ] FOR forcontrol instructionlist
+[ ] DO.WHILE instructionlist tfexpression
+[ ] WHILE tfexpression instructionlist
+[ ] DO.UNTIL instructionlist tfexpression
+[ ] UNTIL tfexpression instructionlist
+[ ] CASE value clauses
+[ ] COND clauses
+
+
+Template-based iteration
+
+[ ] INVOKE template input *
+[ ] FOREACH data template *
+[ ] MAP template data *
+[ ] MAP.SE template data *
+[ ] FILTER tftemplate data
+[ ] FIND tftemplate data
+[ ] REDUCE template data
+[ ] CROSSMAP template listlist *
+[ ] CASCADE endtest template startvalue *
+[ ] CASCADE.2 endtest temp1 startval1 temp2 startval2
+[ ] TRANSFER endtest template inbasket
+
+
+Macros
+
+[ ] MACROEXPAND expr

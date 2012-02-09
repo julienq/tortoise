@@ -1,10 +1,10 @@
 Constructors
 
-[ ] WORD word1 word2 *
-[ ] LIST thing1 thing2 *
-[ ] SENTENCE, SE thing1 thing2 *
-[ ] FPUT thing list
-[ ] LPUT thing list
+[x] WORD word1 word2 *
+[x] LIST thing1 thing2 *
+[x] SENTENCE, SE thing1 thing2 *
+[x] FPUT thing list
+[x] LPUT thing list
 [ ] ARRAY size (ARRAY size origin)
 [ ] LISTTOARRAY list (LISTTOARRAY list origin)
 [ ] ARRAYTOLIST array
@@ -12,21 +12,21 @@ Constructors
 
 Selectors
 
-[ ] FIRST thing
-[ ] FIRSTS list
-[ ] LAST wordorlist
-[ ] BUTFIRST, BF wordorlist
-[ ] BUTFIRSTS, BFS list
-[ ] BUTLAST, BL wordorlist
-[ ] ITEM index thing
+[x] FIRST thing
+[x] FIRSTS list
+[x] LAST wordorlist
+[x] BUTFIRST, BF wordorlist
+[x] BUTFIRSTS, BFS list
+[x] BUTLAST, BL wordorlist
+[x] ITEM index thing
 
 
 Mutators
 
-[ ] (c) SETITEM index array value
-[ ] (c) .SETFIRST list value
-[ ] (c) .SETBF list value
-[ ] (c) .SETITEM index array value
+[ ] SETITEM index array value
+[ ] .SETFIRST list value
+[ ] .SETBF list value
+[ ] .SETITEM index array value
 
 
 Predicates
@@ -61,9 +61,9 @@ Queries
 
 Transmitters
 
-[ ] (c) PRINT, PR thing *
-[ ] (c) TYPE thing *
-[ ] (c) SHOW thing *
+[x] PRINT, PR thing *
+[ ] TYPE thing *
+[ ] SHOW thing *
 
 
 Receivers
@@ -75,52 +75,52 @@ Receivers
 [ ] SHELL command (SHELL command wordflag)
 
 
-File Access
+File access
 
-[ ] (c) SETPREFIX string
+[ ] SETPREFIX string
 [ ] PREFIX
-[ ] (c) OPENREAD filename
-[ ] (c) OPENWRITE filename
-[ ] (c) OPENAPPEND filename
-[ ] (c) OPENUPDATE filename
-[ ] (c) CLOSE filename
+[ ] OPENREAD filename
+[ ] OPENWRITE filename
+[ ] OPENAPPEND filename
+[ ] OPENUPDATE filename
+[ ] CLOSE filename
 [ ] ALLOPEN
-[ ] (c) CLOSEALL
-[ ] (c) ERASEFILE, ERF filename
-[ ] (c) DRIBBLE
-[ ] (c) NODRIBBLE
-[ ] (c) SETREAD filename
-[ ] (c) SETWRITE filename
+[ ] CLOSEALL
+[ ] ERASEFILE, ERF filename
+[ ] DRIBBLE
+[ ] NODRIBBLE
+[ ] SETREAD filename
+[ ] SETWRITE filename
 [ ] READER
 [ ] WRITER
-[ ] (c) SETREADPOS charpos
-[ ] (c) SETWRITEPOS charpos
+[ ] SETREADPOS charpos
+[ ] SETWRITEPOS charpos
 [ ] READPOS
 [ ] WRITEPOS
 [ ] EOFP, EOF?
 
 
-Terminal Access
+Terminal access
 
 [ ] KEYP, KEY?
-[ ] (c) CLEARTEXT, CT
-[ ] (c) SETCURSOR vector
+[ ] CLEARTEXT, CT
+[ ] SETCURSOR vector
 [ ] CURSOR
-[ ] (c) SETMARGINS vector
-[ ] (c) SETTEXTCOLOR, SETTC foreground background
-[ ] (c) INCREASEFONT
-[ ] (c) DECREASEFONT
-[ ] (c) SETTEXTSIZE height
+[ ] SETMARGINS vector
+[ ] SETTEXTCOLOR, SETTC foreground background
+[ ] INCREASEFONT
+[ ] DECREASEFONT
+[ ] SETTEXTSIZE height
 [ ] TEXTSIZE
-[ ] (c) SETFONT fontname
+[ ] SETFONT fontname
 
 
 Arithmetic
 
-[ ] SUM num1 num2 * (num1 + num2)
+[x] SUM num1 num2 * (num1 + num2)
 [ ] DIFFERENCE num1 num2 * (num1 - num2)
 [ ] MINUS num (- num)
-[ ] PRODUCT num1 num2 * (num1 * num2)
+[x] PRODUCT num1 num2 * (num1 * num2)
 [ ] QUOTIENT num1 num2 * (num1 / num2)
 [ ] REMAINDER num1 num2
 [ ] INT num
@@ -178,16 +178,16 @@ Logical operations
 
 Turtle motion
 
-[ ] (c) FORWARD, FD dist
-[ ] (c) BACK, BK dist
-[ ] (c) LEFT, LT degrees
-[ ] (c) RIGHT, RT degrees
-[ ] (c) SETPOS pos
-[ ] (c) SETXY x y
-[ ] (c) SETX x
-[ ] (c) SETHEADING, SETH degrees
-[ ] (c) HOME
-[ ] (c) ARC angle radius
+[ ] FORWARD, FD dist
+[ ] BACK, BK dist
+[ ] LEFT, LT degrees
+[ ] RIGHT, RT degrees
+[ ] SETPOS pos
+[ ] SETXY x y
+[ ] SETX x
+[ ] SETHEADING, SETH degrees
+[ ] HOME
+[ ] ARC angle radius
 
 
 Turtle motion queries
@@ -212,13 +212,13 @@ Turtle and window control
 [ ] FILL
 [ ] FILLED
 [ ] LABEL
-[ ] (c) SETLABELHEIGHT
+[ ] SETLABELHEIGHT
 [ ] TEXTSCREEN, TS
 [ ] FULLSCREEN, FS
 [ ] SPLITSCREEN, SS
 [ ] SETSCRUNCH xscale yscale
-[ ] (c) REFRESH
-[ ] (c) NOREFRESH
+[ ] REFRESH
+[ ] NOREFRESH
 
 
 Turtle and window queries
@@ -268,18 +268,128 @@ Mouse queries
 Procedure definition
 
 [ ] (c; special form) TO procname :input1 :input2 ...
-[ ] (c) DEFINE procname text
+[ ] DEFINE procname text
 [ ] TEXT procname
 [ ] FULLTEXT procname
-[ ] (c) COPYDEF newname oldname
+[ ] COPYDEF newname oldname
 
 
 Variable definition
 
-[ ] (c) MAKE varname value
-[ ] (c) NAME value varname
-[ ] (c) LOCAL varname *, LOCAL varnamelist
+[ ] MAKE varname value
+[ ] NAME value varname
+[ ] LOCAL varname *, LOCAL varnamelist
 [ ] THING varname, :quoted.varname
 [ ] GLOBAL varname *, GLOBAL varnamelist
 
-(...)
+
+Property lists
+
+[ ] PROP listname propname value
+[ ] GPROP plistname propname
+[ ] REMPROP plistname propname
+[ ] PLIST plistname
+
+
+Predicates
+
+[ ] PROCEDUREP, PROCEDURE? name
+[ ] PRIMITIVEP, PRIMITIVE? name
+[ ] DEFINEDP, DEFINED? name
+[ ] NAMEP, NAME? name
+[ ] PLISTP, PLIST? name
+
+
+Queries
+
+[ ] CONTENTS
+[ ] BURIED
+[ ] TRACED
+[ ] STEPPED
+[ ] PROCEDURES
+[ ] PRIMITIVES
+[ ] NAMES
+[ ] PLISTS
+[ ] NAMELIST varname, NAMELIST varnamelist
+[ ] PLLIST plname, PLLIST plnamelist
+[ ] ARITY procedurename
+[ ] NODES
+
+
+Inspection
+
+[ ] PRINTOUT contentslist
+[ ] PO contentslist
+[ ] POALL
+[ ] POPS
+[ ] PONS
+[ ] POPLS
+[ ] POT contentslist
+
+
+Workspace control
+
+[ ] ERASE, ER contentslist
+[ ] ERALL
+[ ] ERPS
+[ ] ERNS
+[ ] ERPLS
+[ ] BURY contentslist
+[ ] UNBURY contentslist
+[ ] BURIEDP, BURIED? contentslist
+[ ] TRACE contentslist
+[ ] UNTRACE contentslist
+[ ] TRACEDP, TRACED? contentslist
+[ ] STEP contentslist
+[ ] UNSTEP contentslist
+[ ] STEPPEDP, STEPPED? contentslist
+[ ] EDIT, ED contentlist (EDIT), (ED)
+[ ] EDITFILE filename
+[ ] SAVE filename
+[ ] LOAD filename
+[ ] CSLSLOAD name
+[ ] HELP name (HELP)
+[ ] SETEDITOR path
+[ ] SETLIBLOC path
+[ ] SETHELPLOC path
+[ ] SETCSLSLOC path
+[ ] SETTEMPLOC path
+[ ] CG (CG anything)
+[ ] .SETSEGMENTSIZE num
+
+
+Control structures
+
+[ ] RUN instructionlist
+[ ] RUNRESULT instructionlist
+[ ] REPEAT num instructionlist
+[ ] FOREVER instructionlist
+[ ] REPCOUNT
+[ ] IF tf instructionlist (IF tf list1 list2)
+[ ] IFELSE tf list1 list2
+[ ] TEST tf
+[ ] IFTRUE, IFT instructionlist
+[ ] IFFALSE, IFF instructionlist
+[ ] STOP
+[ ] OUTPUT, OP value
+[ ] CATCH tag instructionlist
+[ ] THROW tag (THROW tag value)
+[ ] ERROR
+[ ] PAUSE
+[ ] CONTINUE, CO value (CONTINUE), (CO)
+[ ] WAIT time
+[ ] BYE
+[ ] .MAYBEOUTPUT value
+[ ] GOTO word
+[ ] TAG quoted.word
+
+
+Template-based iteration
+
+[ ] APPLY template inputlist
+
+
+Macros
+
+[ ] .MACRO, .DEFMACRO -> special forms
+[ ] MACROP, MACRO? name

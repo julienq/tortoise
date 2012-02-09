@@ -16,21 +16,15 @@ function prompt(p, f)
 }
 
 var tokenizer = Object.create(logo.tokenizer).init();
-var parser = Object.create(logo.parser).init();
-
-// Add the primitive functions
-parser.add_function("SUM", 2);
-parser.add_function("FIRST", 1);
-parser.add_function("PRINT", 1);
+var interpreter = Object.create(logo.interpreter).init();
+interpreter.print = function(str) { process.stdout.write(str); };
+interpreter.warn = function(str) { process.stderr.write(str + "\n"); };
+interpreter.error = function(str) { process.stderr.write(str + "\n"); };
 
 function repl(line)
 {
   tokenizer.tokenize(line + "\n", function(p, tokens) {
-      if (tokens) {
-        console.log("{0}\t{1} (x{2})"
-          .fmt(tokenizer.line, tokens.join(" "), tokens.length));
-        console.log(parser.parse_tokens(tokens));
-      }
+      if (tokens) interpreter.eval_tokens(tokens);
       prompt("{0} ".fmt(p), repl);
     });
 }
