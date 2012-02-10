@@ -22,12 +22,14 @@ interpreter.type = function(str) { process.stdout.write(str); };
 interpreter.warn = function(str) { process.stderr.write(str + "\n"); };
 interpreter.error = function(str) { process.stderr.write(str + "\n"); };
 interpreter.bye = function() { process.exit(0); };
+interpreter.read_line = function(f) { prompt("", f); }
 
 function repl(line)
 {
   tokenizer.tokenize(line + "\n", function(p, tokens) {
-      if (tokens) interpreter.eval_tokens(tokens);
-      prompt("{0} ".fmt(p), repl);
+      interpreter.eval_tokens(tokens, function() {
+          prompt("{0} ".fmt(p), repl);
+        });
     });
 }
 

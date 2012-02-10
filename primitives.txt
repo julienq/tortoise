@@ -68,7 +68,7 @@ Transmitters
 
 Receivers
 
-[*] READLIST, RL
+[/] READLIST, RL
 [ ] READWORD, RW
 [ ] READRAWLINE
 [ ] READCHARS, RCS num
@@ -377,7 +377,7 @@ Control structures
 [ ] ERROR
 [ ] PAUSE
 [ ] CONTINUE, CO value (CONTINUE), (CO)
-[ ] WAIT time
+[x] WAIT time
 [x] BYE
 [ ] .MAYBEOUTPUT value
 [ ] GOTO word
