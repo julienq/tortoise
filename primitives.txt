@@ -68,7 +68,7 @@ Transmitters
 
 Receivers
 
-[ ] READLIST, RL
+[*] READLIST, RL
 [ ] READWORD, RW
 [ ] READRAWLINE
 [ ] READCHARS, RCS num
@@ -118,10 +118,10 @@ Terminal access
 Arithmetic
 
 [x] SUM num1 num2 * (num1 + num2)
-[ ] DIFFERENCE num1 num2 * (num1 - num2)
-[ ] MINUS num (- num)
+[x] DIFFERENCE num1 num2 * (num1 - num2)
+[x] MINUS num (- num)
 [x] PRODUCT num1 num2 * (num1 * num2)
-[ ] QUOTIENT num1 num2 * (num1 / num2)
+[x] QUOTIENT num1 num2 * (num1 / num2)
 [ ] REMAINDER num1 num2
 [ ] INT num
 [ ] ROUND num
@@ -267,7 +267,7 @@ Mouse queries
 
 Procedure definition
 
-[ ] (c; special form) TO procname :input1 :input2 ...
+[ ] (special form) TO procname :input1 :input2 ...
 [ ] DEFINE procname text
 [ ] TEXT procname
 [ ] FULLTEXT procname
