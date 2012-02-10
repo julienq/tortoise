@@ -47,7 +47,7 @@ Predicates
 
 Queries
 
-[ ] COUNT thing
+[x] COUNT thing
 [ ] ASCII char
 [ ] RAWASCII char
 [ ] CHAR int
@@ -62,8 +62,8 @@ Queries
 Transmitters
 
 [x] PRINT, PR thing *
-[ ] TYPE thing *
-[ ] SHOW thing *
+[/] TYPE thing *
+[x] SHOW thing *
 
 
 Receivers
@@ -378,7 +378,7 @@ Control structures
 [ ] PAUSE
 [ ] CONTINUE, CO value (CONTINUE), (CO)
 [ ] WAIT time
-[ ] BYE
+[x] BYE
 [ ] .MAYBEOUTPUT value
 [ ] GOTO word
 [ ] TAG quoted.word

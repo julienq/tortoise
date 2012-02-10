@@ -17,9 +17,11 @@ function prompt(p, f)
 
 var tokenizer = Object.create(logo.tokenizer).init();
 var interpreter = Object.create(logo.interpreter).init();
-interpreter.print = function(str) { process.stdout.write(str); };
+interpreter.print = function(str) { process.stdout.write(str + "\n"); };
+interpreter.type = function(str) { process.stdout.write(str); };
 interpreter.warn = function(str) { process.stderr.write(str + "\n"); };
 interpreter.error = function(str) { process.stderr.write(str + "\n"); };
+interpreter.bye = function() { process.exit(0); };
 
 function repl(line)
 {
