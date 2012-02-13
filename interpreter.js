@@ -27,9 +27,8 @@ interpreter.read_line = function(f) { prompt("", f); }
 function repl(line)
 {
   tokenizer.tokenize(line + "\n", function(p, tokens) {
-      interpreter.eval_tokens(tokens, function() {
-          prompt("{0} ".fmt(p), repl);
-        });
+      interpreter.eval_tokens(tokens,
+        function() { prompt("{0} ".fmt(p), repl); });
     });
 }
 

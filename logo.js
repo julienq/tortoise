@@ -1,6 +1,5 @@
 var flexo = require("flexo");
 
-// TODO cps interpreter to handle user input/wait
 // TODO arrays
 
 // Create an empty, doubly-linked list
@@ -116,42 +115,41 @@ exports.interpreter =
     // primitives
 
     this.add_primitive("WORD", 2, function(args, f) {
-        return flexo.foldl(function(x, y) { return x + eval_(y).toString(); },
-          "", arguments);
+        f(flexo.foldl(function(x, y) { return x + y.toString(); },
+          "", args));
       });
 
-    this.add_primitive("LIST", 2, function() {
-        return flexo.foldl(function(l, x) { return l.append(eval_(x)); },
-          empty_list(), arguments);
+    this.add_primitive("LIST", 2, function(args, f) {
+        f(flexo.foldl(function(l, x) { return l.append(x); },
+          empty_list(), args));
       });
 
-    this.add_primitive("SENTENCE", 2, function() {
-        return flexo.foldl(function(l, x) {
-            var v = eval_(x);
-            return v.listp ? v.for_each(function(y) { l.append(y); }) :
-              l.append(v);
-          }, empty_list(), arguments);
+    this.add_primitive("SENTENCE", 2, function(args, f) {
+        f(flexo.foldl(function(l, x) {
+            return x.listp ? x.for_each(function(y) { l.append(y); }) :
+              l.append(x);
+          }, empty_list(), args));
       });
     this.add_primitive("SE", 2, this.functions.SENTENCE.f);
 
-    this.add_primitive("FPUT", 2, 2, 2, function(thing, list) {
-        thing = eval_(thing);
-        list = eval_(list);
+    this.add_primitive("FPUT", 2, 2, 2, function(args, f) {
+        var thing = args[0];
+        var list = args[1];
         if (list.listp) {
-          return list.prepend(thing);
+          f(list.prepend(thing));
         } else {
           // TODO check that thing is a 1-letter word
-          return that.functions.WORD.f.call(that, thing, list);
+          f(that.functions.WORD.f.call(that, thing, list));
         }
       });
 
-    this.add_primitive("LPUT", 2, 2, 2, function(thing, list) {
-        thing = eval_(thing);
-        list = eval_(list);
+    this.add_primitive("LPUT", 2, 2, 2, function(args, f) {
+        thing = args[0];
+        list = args[1];
         if (list.listp) {
-          return list.append(thing);
+          f(list.append(thing));
         } else {
-          return that.functions.WORD.f.call(that, list, thing);
+          f(that.functions.WORD.f.call(that, list, thing));
         }
       });
 
@@ -215,6 +213,7 @@ exports.interpreter =
       });
 
     this.add_primitive("PRINT", 1, function(args, f) {
+        flexo.log("PRINT");
         flexo.async_map(eval_, args, function(args_) {
             that.print(args_.map(function(x) {
                 var str = x.toString();
@@ -285,12 +284,15 @@ exports.interpreter =
 
   eval_tokens: function(tokens, f)
   {
-    flexo.async_foreach((function(expr, g) {
-        this.eval_expr(expr, (function(v) {
+    flexo.log("eval_tokens", tokens);
+    flexo.async_foreach.trampoline((function(g, expr, i, a) {
+        flexo.log("async_forEach:", g, expr, i, a.length);
+        this.eval_expr.bind(this).trampoline(expr, (function(v) {
+            flexo.log("???");
             if (v) {
               this.warn("I don't know what to do with \"{0}\"".fmt(v));
             }
-            g();
+            return g.get_thunk();
           }).bind(this));
       }).bind(this), this.parser.parse_tokens(tokens), f);
   },
@@ -302,22 +304,27 @@ exports.interpreter =
       if (typeof this.functions[expr.value] === "object" &&
           typeof this.functions[expr.value].f === "function") {
         if (expr.args.length < this.functions[expr.value].min) {
-          f({ arity: "error",
+          return f.get_thunk({ arity: "error",
             value: "Not enough arguments for {0}".fmt(expr.value) });
         } else if (expr.args.length > this.functions[expr.value].max) {
-          f({ arity: "error",
+          return f.get_thunk({ arity: "error",
             value: "Too many arguments for {0}".fmt(expr.value) });
         } else {
-          this.functions[expr.value].f.call(this, expr.args, f);
+          return ((function() {
+              this.functions[expr.value].f.get_thunk(expr.args, f);
+            }).bind(this)).get_thunk();
         }
       } else {
-        f({ arity: "error",
+        return f.get_thunk({ arity: "error",
           value: "I don't know how to \"{0}\"".fmt(expr.value) });
       }
     } else if (expr.arity === "list") {
-      this.functions.LIST.f.call(this, expr.value, f);
+      return ((function() {
+          this.functions.LIST.f.call(this, expr.value, f);
+        }).bind(this)).get_thunk();
     } else {
-      f(expr.value);
+      flexo.log("Value:", expr.value);
+      return f.get_thunk(expr.value);
     }
   }
 };
