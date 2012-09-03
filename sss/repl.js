@@ -1,27 +1,26 @@
-var readline = require("readline");
-var sss = require("./sss.js");
-
-var rli = readline.createInterface(process.stdin, process.stdout);
-
-rli.on("close", function () {
-    process.stdout.write("\n");
-    process.exit(0);
-  });
-
-function prompt(p, f) {
-  rli.setPrompt(p);
-  rli.once("line", function (line) {
-    f(line);
-  });
-  rli.prompt();
-}
-
-function repl(line) {
-  var v = sss.eval(sss.read(sss.tokenize(line)), sss.global);
-  if (v !== undefined) {
-    console.log(sss.to_string(v));
+var sss = require("./sss");
+var rl = require("readline").createInterface(process.stdin, process.stdout);
+rl.setPrompt("? ");
+rl.on("line", function(line) {
+  try {
+    var tokens = sss.tokenize(line);
+    while (tokens.length > 0) {
+      var exp = sss.read(tokens);
+      process.stdout.write("\u001b[36m$0;\u001b[0m\n"
+        .fmt(sss.to_js(exp, "env")));
+      var f = sss.compile(exp);
+      var e = f(sss.env, sss.set, sss.symbols);
+      if (e !== undefined) {
+        process.stdout.write(sss.to_sexp(e) + "\n");
+      }
+    }
+  } catch (err) {
+    process.stdout.write("Error: $0\n".fmt(err));
   }
-  prompt("? ", repl);
-}
-
-prompt("? ", repl);
+  rl.prompt();
+});
+rl.on("close", function () {
+  process.stdout.write("\n");
+  process.exit(0);
+});
+rl.prompt();

@@ -282,13 +282,13 @@ exports.interpreter =
     this.functions[name] = { primitive: true, min: min, max: max, f: f };
   },
 
+  // TODO fix this!
   eval_tokens: function(tokens, f)
   {
     flexo.log("eval_tokens", tokens);
     flexo.async_foreach.trampoline((function(g, expr, i, a) {
         flexo.log("async_forEach:", g, expr, i, a.length);
         this.eval_expr.bind(this).trampoline(expr, (function(v) {
-            flexo.log("???");
             if (v) {
               this.warn("I don't know what to do with \"{0}\"".fmt(v));
             }
