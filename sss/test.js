@@ -5,16 +5,6 @@
     return typeof require === "function" && require(m) || window[m];
   }
 
-  function ev(string) {
-    return sss.compile(sss.read(sss.tokenize(string)))(sss.env, sss.set,
-      sss.symbols);
-    /*var f = sss.compile(sss.read(sss.tokenize(string)));
-    var v = f(sss.env, sss.set, sss.symbols);
-    if (v !== undefined) {
-      return sss.to_sexp(v);
-    }*/
-  }
-
   var assert = req("assert");
   var sss = req("sss");
 
@@ -39,6 +29,25 @@
       assert.deepEqual(["(", "+", 1, 2, ")"], sss.tokenize("(+ 1 2)"));
       assert.deepEqual(["(", "+", 1, 2, ")"], sss.tokenize("   ( + 1 2   )  "));
     });
+  });
+
+  function test_pair(pair) {
+    it("$0 => $1" .fmt(pair[0],
+        pair[1] === undefined ? "#undefined" : sss.to_sexp(pair[1])),
+      function () {
+        return assert.deepEqual(pair[1], sss.eval(pair[0]));
+      });
+  }
+
+  describe("Some basic tests", function () {
+    [ ["(list)", []],
+      ["(list 1 2 3 4)", [1, 2, 3, 4]],
+      ["'(1 2 3 4)", [1, 2, 3, 4]],
+      ["(define f (lambda (x) (begin (define g (lambda (x) (* x 2))) (g (+ x 1)))))"],
+      ["(f 2)", 6],
+      ["(define fgh (lambda (x) (begin (define g (lambda (x) (* x 2))) (define h (lambda (x) (* x x))) (h (g (+ x 1))))))"],
+      ["(fgh 2)", 36],
+    ].forEach(test_pair);
   });
 
   describe("Tests from lispy.py should pass!", function () {
@@ -66,17 +75,32 @@
         30414093201713378043612608166064768844377641568960512000000000000],
       ["(define abs (lambda (n) ((if (> n 0) + -) 0 n)))"],
       ["(list (abs -3) (abs 0) (abs 3))", [3, 0, 3]],
-      ["define combine (lambda (f) (lambda (x y) (if (null? x) (quote ()) (f (list (car x) (car y)) ((combine f) (cdr x) (cdr y)))))))"],
-      // TODO cons
+      ["(define combine (lambda (f) (lambda (x y) (if (null? x) (quote ()) (f (list (car x) (car y)) ((combine f) (cdr x) (cdr y)))))))"],
       ["(define zip (combine cons))"],
-      //["(zip (list 1 2 3 4) (list 5 6 7 8))", [[1, 5,], [2, 6], [3, 7] [4, 8]]],
-    ].forEach(function(pair) {
-      it("$0 => $1" .fmt(pair[0],
-          pair[1] === undefined ? "#nil" : sss.to_sexp(pair[1])),
-        function () {
-          return assert.deepEqual(pair[1], ev(pair[0]));
-        });
-    });
+      ["(zip (list 1 2 3 4) (list 5 6 7 8))", [[1, 5], [2, 6], [3, 7], [4, 8]]],
+      ["(define riff-shuffle (lambda (deck) (begin (define take (lambda (n seq) (if (<= n 0) (quote ()) (cons (car seq) (take (- n 1) (cdr seq)))))) (define drop (lambda (n seq) (if (<= n 0) seq (drop (- n 1) (cdr seq))))) (define mid (lambda (seq) (/ (length seq) 2))) ((combine append) (take (mid deck) deck) (drop (mid deck) deck)))))"],
+      ["(riff-shuffle (list 1 2 3 4 5 6 7 8))", [1, 5, 2, 6, 3, 7, 4, 8]],
+      ["((repeat riff-shuffle) (list 1 2 3 4 5 6 7 8))",
+        [1, 3, 5, 7, 2, 4, 6, 8]],
+      ["(riff-shuffle (riff-shuffle (riff-shuffle (list 1 2 3 4 5 6 7 8))))",
+        [1, 2, 3, 4, 5, 6, 7, 8]],
+      ["(define (twice x) (* 2 x))"],
+      ["(twice 2)", 4],
+      // (twice 2 2) =raises=> TypeError expected (x), given (2 2),
+      ["(define lyst (lambda items items))"],
+      ["(lyst 1 2 3 (+ 2 2))", [1, 2, 3, 4]],
+      // TODO if without else
+      // ["(if 1 2)", 2],
+      // ["(if (= 3 4) 2)"],
+      // TODO define functions
+      // ["(define ((account bal) amt) (set! bal (+ bal amt)) bal)"],
+      // [ "(define a1 (account 100))"],
+      // ["(a1 0)", 100],
+      // ["(a1 10)", 110],
+      // ["(a1 10)", 120],
+      // ["(define (newton guess function derivative epsilon) (define guess2 (- guess (/ (function guess) (derivative guess)))) (if (< (abs (- guess guess2)) epsilon) guess2 (newton guess2 function derivative epsilon)))"],
+      // ["(define (square-root a) (newton 1 (lambda (x) (- (* x x) a)) (lambda (x) (* 2 x)) 1e-8))"],
+    ].forEach(test_pair);
   });
 
 }());

@@ -135,9 +135,14 @@
         return "$0[\"$1\"]=$2,undefined".fmt(env, exp[1], sss.to_js(exp[2], env));
       } else if (exp[0] === s_lambda) {
         var f = "function(){var $0_=Object.create($0);".fmt(env);
-        exp[1].forEach(function (v, i) {
-          f += "$0_[\"$1\"]=arguments[$2];".fmt(env, v, i);
-        });
+        if (is_symbol(exp[1])) {
+          f += "$0_[$1]=Array.prototype.slice.call(arguments);"
+            .fmt(env, JSON.stringify(exp[1].symbol));
+        } else {
+          exp[1].forEach(function (v, i) {
+            f += "$0_[\"$1\"]=arguments[$2];".fmt(env, v, i);
+          });
+        }
         return f + "return $0;}".fmt(sss.to_js(exp[2], env + "_"));
       } else if (exp[0] === s_begin) {
         return exp.slice(1).map(function (e) {
@@ -192,6 +197,7 @@
     car: function (x) { return x[0]; },
     cdr: function (x) { return x.slice(1); },
     list: function () { return Array.prototype.slice.call(arguments); },
+    append: function (x, y) { return x.concat(y); },
     "list?": function (x) { return Array.isArray(x); },
     "null?": function (x) { return Array.isArray(x) && x.length === 0; },
     "symbol?": is_symbol,
@@ -207,6 +213,11 @@
     } else if (e !== env) {
       set(Object.getPrototypeOf(e), name, value);
     }
+  };
+
+  sss.eval = function (str) {
+    return sss.compile(sss.read(sss.tokenize(str)))(sss.env, sss.set,
+      sss.symbols);
   };
 
 }(typeof exports === "object" ? exports : window.sss = {}));

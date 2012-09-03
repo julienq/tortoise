@@ -6,12 +6,11 @@ rl.on("line", function(line) {
     var tokens = sss.tokenize(line);
     while (tokens.length > 0) {
       var exp = sss.read(tokens);
-      process.stdout.write("\u001b[36m$0;\u001b[0m\n"
+      process.stdout.write("\u001b[36mreturn $0;\u001b[0m\n"
         .fmt(sss.to_js(exp, "env")));
-      var f = sss.compile(exp);
-      var e = f(sss.env, sss.set, sss.symbols);
-      if (e !== undefined) {
-        process.stdout.write(sss.to_sexp(e) + "\n");
+      var v = sss.compile(exp)(sss.env, sss.set, sss.symbols);
+      if (v !== undefined) {
+        process.stdout.write(sss.to_sexp(v) + "\n");
       }
     }
   } catch (err) {
