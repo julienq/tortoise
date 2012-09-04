@@ -202,7 +202,9 @@
             f += "$0_[$1]=arguments[$2];".fmt(env, JSON.stringify(v.symbol), i);
           });
         }
-        return f + "return $0;}".fmt(sss.to_js(x[2], env + "_"));
+        return f + "return $0;}".fmt(x.slice(2).map(function (e) {
+          return sss.to_js(e, env + "_");
+        }).join(","));
       } else if (x[0] === s_begin) {
         return x.slice(1).map(function (e) {
           return sss.to_js(e, env);

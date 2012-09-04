@@ -92,14 +92,21 @@
       ["(if (= 3 4) 2)"],
       ["(define ((account bal) amt) (set! bal (+ bal amt)) bal)"],
       [ "(define a1 (account 100))"],
-      // ["(a1 0)", 100],
-      // ["(a1 10)", 110],
-      // ["(a1 10)", 120],
+      ["(a1 0)", 100],
+      ["(a1 10)", 110],
+      ["(a1 10)", 120],
       ["(define (newton guess function derivative epsilon) (define guess2 (- guess (/ (function guess) (derivative guess)))) (if (< (abs (- guess guess2)) epsilon) guess2 (newton guess2 function derivative epsilon)))"],
       ["(define (square-root a) (newton 1 (lambda (x) (- (* x x) a)) (lambda (x) (* 2 x)) 1e-8))"],
-      //["(> (square-root 200.) 14.14213)", true],
-      //["(< (square-root 200.) 14.14215)", true],
-      //["(= (square-root 200.) (sqrt 200.))", true],
+      ["(> (square-root 200.) 14.14213)", true],
+      ["(< (square-root 200.) 14.14215)", true],
+      ["(= (square-root 200.) (sqrt 200.))", true],
+      // Problem: try to set env_[] ?!
+      // ["(define (sum-squares-range start end) (define (sumsq-acc start end acc) (if (> start end) acc (sumsq-acc (+ start 1) end (+ (* start start) acc)))) (sumsq-acc start end 0))"],
+      // ["(sum-squares-range 1 3000)", 9004500500],
+      ["(quote x)", sss.get_symbol("x")],
+      ["(quote (1 2 three))", [1, 2, sss.get_symbol("three")]], 
+      ["'x", sss.get_symbol("x")],
+      ["'(one 2 3)", [sss.get_symbol("one"), 2, 3]],
     ].forEach(test_pair);
   });
 
