@@ -5,10 +5,10 @@ rl.on("line", function(line) {
   try {
     var tokens = sss.tokenize(line);
     while (tokens.length > 0) {
-      var exp = sss.parse(tokens);
+      var x = sss.parse(tokens);
       process.stdout.write("\u001b[36mreturn $0;\u001b[0m\n"
-        .fmt(sss.to_js(exp, "env")));
-      var v = sss.compile(exp)(sss.env, sss.get, sss.set, sss.symbols);
+        .fmt(sss.to_js(x, "env")));
+      var v = sss.compile(x)(sss.env, sss.get, sss.set, sss.symbols);
       if (v !== undefined) {
         process.stdout.write(sss.to_sexp(v) + "\n");
       }

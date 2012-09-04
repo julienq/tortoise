@@ -23,14 +23,6 @@
       });
   });
 
-  describe("sss.tokenize(string)", function () {
-    it("returns an array of tokens for an input string", function () {
-      assert.deepEqual([], sss.tokenize(""));
-      assert.deepEqual(["(", "+", 1, 2, ")"], sss.tokenize("(+ 1 2)"));
-      assert.deepEqual(["(", "+", 1, 2, ")"], sss.tokenize("   ( + 1 2   )  "));
-    });
-  });
-
   function test_pair(pair) {
     it("$0 => $1" .fmt(pair[0],
         pair[1] === undefined ? "#undefined" : sss.to_sexp(pair[1])),
@@ -100,11 +92,11 @@
       ["(> (square-root 200.) 14.14213)", true],
       ["(< (square-root 200.) 14.14215)", true],
       ["(= (square-root 200.) (sqrt 200.))", true],
-      // Problem: try to set env_[] ?!
-      // ["(define (sum-squares-range start end) (define (sumsq-acc start end acc) (if (> start end) acc (sumsq-acc (+ start 1) end (+ (* start start) acc)))) (sumsq-acc start end 0))"],
-      // ["(sum-squares-range 1 3000)", 9004500500],
+      ["(define (sum-squares-range start end) (define (sumsq-acc start end acc) (if (> start end) acc (sumsq-acc (+ start 1) end (+ (* start start) acc)))) (sumsq-acc start end 0))"],
+      ["(sum-squares-range 1 3000)", 9004500500],
+      ["(let ((a 1) (b 2)) (+ a b))", 3],
       ["(quote x)", sss.get_symbol("x")],
-      ["(quote (1 2 three))", [1, 2, sss.get_symbol("three")]], 
+      ["(quote (1 2 three))", [1, 2, sss.get_symbol("three")]],
       ["'x", sss.get_symbol("x")],
       ["'(one 2 3)", [sss.get_symbol("one"), 2, 3]],
     ].forEach(test_pair);
@@ -120,6 +112,9 @@
       ["undefined-variable", /cannot get undefined variable/],
       ["(set! 1 2)", /can only set! a symbol/],
       ["(define 3 4)", /can only define a symbol/],
+      ["(lambda 3 3)", /illegal lambda argument list/],
+      ["(lambda (x))", /wrong length/],
+      ["(let ((a 1) (b 2 3)) (+ a b))", /illegal binding list/],
     ].forEach(function (pair) {
       it("$0 => $1".fmt(pair[0], pair[1]), function () {
         assert.throws(function () {
@@ -127,8 +122,6 @@
         }, pair[1]);
       });
     });
-/*(lambda 3 3) =raises=> SyntaxError (lambda 3 3): illegal lambda argument list
-(lambda (x)) =raises=> SyntaxError (lambda (x)): wrong length*/
 
   });
 
