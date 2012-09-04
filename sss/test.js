@@ -110,6 +110,7 @@
       ["(if 1 2 3 4)", /wrong length/],
       ["(set! x)", /wrong length/],
       ["(set! undefined-variable 1)", /cannot set undefined variable/],
+      ["undefined-variable", /cannot get undefined variable/],
       ["(set! 1 2)", /can only set! a symbol/],
       ["(define 3 4)", /can only define a symbol/],
     ].forEach(function (pair) {

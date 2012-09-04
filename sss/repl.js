@@ -8,7 +8,7 @@ rl.on("line", function(line) {
       var exp = sss.parse(tokens);
       process.stdout.write("\u001b[36mreturn $0;\u001b[0m\n"
         .fmt(sss.to_js(exp, "env")));
-      var v = sss.compile(exp)(sss.env, sss.set, sss.symbols);
+      var v = sss.compile(exp)(sss.env, sss.get, sss.set, sss.symbols);
       if (v !== undefined) {
         process.stdout.write(sss.to_sexp(v) + "\n");
       }

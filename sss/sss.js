@@ -87,7 +87,7 @@
   // function of two arguments, env (the top-level environment) and set (a
   // function to set values in the environment)
   sss.compile = function (x) {
-    return new Function("env", "set", "symbols",
+    return new Function("env", "get", "set", "symbols",
         "return $0;".fmt(sss.to_js(x, "env")));
   };
 
@@ -211,11 +211,11 @@
         var e = x.map(function (e) {
           return sss.to_js(e, env);
         });
-        return "(function(f){return(typeof f===\"function\"?f:$0[f])($1);}($2))"
+        return "(function(f){return(typeof f===\"function\"?f:get($0,f))($1);}($2))"
           .fmt(env, e.slice(1).join(","), e[0]);
       }
     } else if (is_symbol(x)) {
-      return "$0[$1]".fmt(env, JSON.stringify(x.symbol));
+      return "get($0,$1)".fmt(env, JSON.stringify(x.symbol));
     } else if (typeof x === "string") {
       return JSON.stringify(x);
     } else if (typeof x === "undefined") {
@@ -278,8 +278,18 @@
     }
   };
 
+  sss.get = function (e, name) {
+    if (!e) {
+      throw "cannot get undefined variable $0".fmt(name);
+    } else if (e.hasOwnProperty(name)) {
+      return e[name];
+    } else {
+      return sss.get(Object.getPrototypeOf(e), name);
+    }
+  }
+
   sss.eval = function (str) {
-    return sss.compile(sss.parse(sss.tokenize(str)))(sss.env, sss.set,
+    return sss.compile(sss.parse(sss.tokenize(str)))(sss.env, sss.get, sss.set,
       sss.symbols);
   };
 
