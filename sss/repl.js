@@ -5,7 +5,7 @@ rl.on("line", function(line) {
   try {
     var tokens = sss.tokenize(line);
     while (tokens.length > 0) {
-      var exp = sss.read(tokens);
+      var exp = sss.parse(tokens);
       process.stdout.write("\u001b[36mreturn $0;\u001b[0m\n"
         .fmt(sss.to_js(exp, "env")));
       var v = sss.compile(exp)(sss.env, sss.set, sss.symbols);

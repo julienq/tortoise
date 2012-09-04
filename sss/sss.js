@@ -49,6 +49,7 @@
   var s_if = sss.get_symbol("if");
   var s_set = sss.get_symbol("set!");
   var s_define = sss.get_symbol("define");
+  var s_define_macro = sss.get_symbol("define-macro");
   var s_lambda = sss.get_symbol("lambda");
   var s_begin = sss.get_symbol("begin");
 
@@ -73,12 +74,68 @@
     }
   }
 
+  /*
+  function let_() {
+    var body = Array.prototype.slice.args(1);
+    var vars = args[0].map(function (pair) { return pair[0]; });
+    var vals = args[0].map(function (pair) { return pair[1]; });
+    return s_lambda(
+  }
+  */
+
   // Compile a parsed expression to Javascript. This produces an anonymous
   // function of two arguments, env (the top-level environment) and set (a
   // function to set values in the environment)
-  sss.compile = function (exp) {
+  sss.compile = function (x) {
     return new Function("env", "set", "symbols",
-        "return $0;".fmt(sss.to_js(exp, "env")));
+        "return $0;".fmt(sss.to_js(x, "env")));
+  };
+
+  sss.parse = function (tokens) {
+    return sss.expand(sss.read(tokens), true);
+  };
+
+  function check(x, p, message) {
+    if (!p) {
+      throw "Syntax error in $0: $1".fmt(sss.to_sexp(x),
+          message || "wrong length");
+    }
+    return x;
+  }
+
+  sss.expand = function (x, toplevel) {
+    if (!Array.isArray(x)) {
+      return x;
+    }
+    check(x, x.length > 0);
+    if (x[0] === quotes["'"]) {
+      return check(x, x.length === 2);
+    } else if (x[0] === s_if) {
+      check(x, x.length === 3 || x.length === 4);
+      return x.map(sss.expand);
+    } else if (x[0] === s_set) {
+      check(x, x.length === 3);
+      check(x, is_symbol(x[1]), "can only set! a symbol");
+      return [s_set, x[1], sss.expand(x[2])];
+    } else if (x[0] === s_define || x[0] === s_define_macro) {
+      check(x, x.length >= 3);
+      var v = x[1];
+      if (Array.isArray(v)) {
+        // (define (f args) body) => (define f (lambda (args) body))
+        var lambda = [s_lambda, v.slice(1)].concat(x.slice(2));
+        return sss.expand([s_define, v[0], lambda]);
+      } else {
+        check(x, x.length === 3);
+        check(x, is_symbol(v), "can only define a symbol");
+        var exp = sss.expand(x[2]);
+        if (x[0] === s_define_macro) {
+          check (x, toplevel, "define-macro is only allowed at top level");
+          // TODO
+        }
+        return [s_define, v, exp];
+      }
+    }
+    return x;
   };
 
   // Read a list of tokens and return an atom or a list suitable for compile()
@@ -107,76 +164,80 @@
     return read_ahead(tokens.shift());
   };
 
-  function is_symbol(exp) {
-    return typeof exp === "object" && exp.hasOwnProperty("symbol");
+  function is_symbol(x) {
+    return typeof x === "object" && x.hasOwnProperty("symbol");
   }
 
-  function quote_js(exp) {
-    if (Array.isArray(exp)) {
-      return "[" + exp.map(quote_js).join(",") + "]";
-    } else if (is_symbol(exp)) {
-      return "symbols[$0]".fmt(JSON.stringify(exp.symbol));
+  function quote_js(x) {
+    if (Array.isArray(x)) {
+      return "[" + x.map(quote_js).join(",") + "]";
+    } else if (is_symbol(x)) {
+      return "symbols[$0]".fmt(JSON.stringify(x.symbol));
     } else {
-      return JSON.stringify(exp);
+      return JSON.stringify(x);
     }
   }
 
   // Translate lisp forms to Javascript code to be passed to compile()
-  sss.to_js = function(exp, env) {
-    if (Array.isArray(exp)) {
-      if (exp[0] === quotes["'"]) {
-        return quote_js(exp[1]);
-      } else if (exp[0] === s_if) {
-        return "$0?$1:$2".fmt(sss.to_js(exp[1], env), sss.to_js(exp[2], env),
-            sss.to_js(exp[3], env));
-      } else if (exp[0] === s_set) {
-        return "set($0,\"$1\",$2)".fmt(env, exp[1], sss.to_js(exp[2], env));
-      } else if (exp[0] === s_define) {
-        return "$0[\"$1\"]=$2,undefined".fmt(env, exp[1], sss.to_js(exp[2], env));
-      } else if (exp[0] === s_lambda) {
+  sss.to_js = function(x, env) {
+    if (Array.isArray(x)) {
+      if (x[0] === quotes["'"]) {
+        return quote_js(x[1]);
+      } else if (x[0] === s_if) {
+        return "$0?$1:$2".fmt(sss.to_js(x[1], env), sss.to_js(x[2], env),
+            sss.to_js(x[3], env));
+      } else if (x[0] === s_set) {
+        return "set($0,$1,$2)".fmt(env, JSON.stringify(x[1].symbol), sss.to_js(x[2],
+              env));
+      } else if (x[0] === s_define) {
+        return "$0[$1]=$2,undefined".fmt(env, JSON.stringify(x[1].symbol),
+            sss.to_js(x[2], env));
+      } else if (x[0] === s_lambda) {
         var f = "function(){var $0_=Object.create($0);".fmt(env);
-        if (is_symbol(exp[1])) {
+        if (is_symbol(x[1])) {
           f += "$0_[$1]=Array.prototype.slice.call(arguments);"
-            .fmt(env, JSON.stringify(exp[1].symbol));
+            .fmt(env, JSON.stringify(x[1].symbol));
         } else {
-          exp[1].forEach(function (v, i) {
-            f += "$0_[\"$1\"]=arguments[$2];".fmt(env, v, i);
+          x[1].forEach(function (v, i) {
+            f += "$0_[$1]=arguments[$2];".fmt(env, JSON.stringify(v.symbol), i);
           });
         }
-        return f + "return $0;}".fmt(sss.to_js(exp[2], env + "_"));
-      } else if (exp[0] === s_begin) {
-        return exp.slice(1).map(function (e) {
+        return f + "return $0;}".fmt(sss.to_js(x[2], env + "_"));
+      } else if (x[0] === s_begin) {
+        return x.slice(1).map(function (e) {
           return sss.to_js(e, env);
         }).join(",");
       } else {
-        var e = exp.map(function (e) {
+        var e = x.map(function (e) {
           return sss.to_js(e, env);
         });
         return "(function(f){return(typeof f===\"function\"?f:$0[f])($1);}($2))"
           .fmt(env, e.slice(1).join(","), e[0]);
       }
-    } else if (is_symbol(exp)) {
-      return "$0[\"$1\"]".fmt(env, exp.symbol);
-    } else if (typeof exp === "string") {
-      return JSON.stringify(exp);
+    } else if (is_symbol(x)) {
+      return "$0[$1]".fmt(env, JSON.stringify(x.symbol));
+    } else if (typeof x === "string") {
+      return JSON.stringify(x);
+    } else if (typeof x === "undefined") {
+      return "undefined";
     } else {
-      return exp.toString();
+      return x.toString();
     }
   };
 
   // Translate a parsed expression back to an s-expression
-  sss.to_sexp = function (exp) {
-    return Array.isArray(exp) ?
-      "(" + exp.map(sss.to_sexp).join(" ") + ")" :
-      typeof exp === "function" ?
+  sss.to_sexp = function (x) {
+    return Array.isArray(x) ?
+      "(" + x.map(sss.to_sexp).join(" ") + ")" :
+      typeof x === "function" ?
         "#function" :
-        exp === true ?
+        x === true ?
           "#t" :
-          exp === false ?
+          x === false ?
             "#f" :
-            typeof exp === "string" ?
-              JSON.stringify(exp) :
-              exp.toString();
+            typeof x === "string" ?
+              JSON.stringify(x) :
+              typeof x === "undefined" ? "" : x.toString();
   };
 
   // Runtime environment
@@ -208,15 +269,17 @@
   });
 
   sss.set = function (e, name, value) {
-    if (e.hasOwnProperty(name)) {
+    if (!e) {
+      throw "cannot set undefined variable $0".fmt(name);
+    } else if (e.hasOwnProperty(name)) {
       e[name] = value;
-    } else if (e !== env) {
-      set(Object.getPrototypeOf(e), name, value);
+    } else {
+      sss.set(Object.getPrototypeOf(e), name, value);
     }
   };
 
   sss.eval = function (str) {
-    return sss.compile(sss.read(sss.tokenize(str)))(sss.env, sss.set,
+    return sss.compile(sss.parse(sss.tokenize(str)))(sss.env, sss.set,
       sss.symbols);
   };
 
