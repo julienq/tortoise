@@ -78,6 +78,10 @@
     return [x].concat(xs);
   }
 
+  function is_pair(x) {
+    return Array.isArray(x) && x.length !== 0;
+  }
+
   var macros = {};
 
   function add_macro(name, f) {
@@ -126,6 +130,9 @@
     check(x, x.length > 0);
     if (x[0] === quotes["'"]) {
       return check(x, x.length === 2);
+    } else if (x[0] === quotes["`"]) {
+      check(x, x.length === 2);
+      return expand_quasiquote(x[1]);
     } else if (x[0] === s_if) {
       check(x, x.length === 3 || x.length === 4);
       return x.map(expand);
@@ -144,8 +151,11 @@
         check(x, is_symbol(v), "can only define a symbol");
         var exp = expand(x[2]);
         if (x[0] === s_define_macro) {
-          check (x, toplevel, "define-macro is only allowed at top level");
-          // TODO
+          check(x, toplevel, "define-macro is only allowed at top level");
+          var f = sss.compile(exp)(sss.env, sss.get, sss.set, sss.symbols);
+          check(x, typeof f === "function", "macro must be a function");
+          macros[v.symbol] = f;
+          return;
         }
         return [s_define, v, exp];
       }
@@ -167,7 +177,25 @@
     } else {
       return x.map(expand);
     }
-  };
+  }
+
+  function expand_quasiquote(x) {
+    if (!is_pair(x)) {
+      return [quotes["'"], x];
+    }
+    check(x, x[0] !== quotes[",@"], "cannot splice here");
+    if (x[0] === quotes[","]) {
+      check(x, x.length === 2);
+      return x[1];
+    } else if (is_pair(x[0]) && x[0][0] === quotes[",@"]) {
+      check(x[0], x[0].length === 2);
+      return [sss.get_symbol("append"), x[0][1],
+        expand_quasiquote(x.splice(1))];
+    } else {
+      return [sss.get_symbol("cons"), expand_quasiquote(x[0]),
+        expand_quasiquote(x.splice(1))];
+    }
+  }
 
   // Read a list of tokens and return an atom or a list suitable for compile()
   function read(tokens) {
@@ -291,6 +319,7 @@
     list: function () { return Array.prototype.slice.call(arguments); },
     append: function (x, y) { return x.concat(y); },
     "list?": function (x) { return Array.isArray(x); },
+    "pair?": is_pair,
     "null?": function (x) { return Array.isArray(x) && x.length === 0; },
     "symbol?": is_symbol,
   };
@@ -323,5 +352,7 @@
     return sss.compile(sss.parse(sss.tokenize(str)))(sss.env, sss.get, sss.set,
       sss.symbols);
   };
+
+  sss.eval("(define-macro and (lambda args (if (null? args) #t (if (= (length args) 1) (car args) `(if ,(car args) (and ,@(cdr args)) #f)))))");
 
 }(typeof exports === "object" ? exports : window.sss = {}));

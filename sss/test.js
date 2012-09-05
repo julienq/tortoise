@@ -95,10 +95,24 @@
       ["(define (sum-squares-range start end) (define (sumsq-acc start end acc) (if (> start end) acc (sumsq-acc (+ start 1) end (+ (* start start) acc)))) (sumsq-acc start end 0))"],
       ["(sum-squares-range 1 3000)", 9004500500],
       ["(let ((a 1) (b 2)) (+ a b))", 3],
+      ["(and 1 2 3)", 3],
+      ["(and (> 2 1) 2 3)", 3],
+      ["(and)", true],
+      ["(and (> 2 1) (> 2 3))", false],
+      ["(define-macro unless (lambda args `(if (not ,(car args)) (begin ,@(cdr args))))) ; test `"],
+      ["(unless (= 2 (+ 1 1)) (display 2) 3 4)", 2],
+      // TODO newline handling
+      ["(unless (= 4 (+ 1 1)) (display 2) (display \"(newline)\") 3 4)", 4],
       ["(quote x)", sss.get_symbol("x")],
       ["(quote (1 2 three))", [1, 2, sss.get_symbol("three")]],
       ["'x", sss.get_symbol("x")],
       ["'(one 2 3)", [sss.get_symbol("one"), 2, 3]],
+      ["(define L (list 1 2 3))"],
+      ["`(testing ,@L testing)",
+        [sss.get_symbol("testing"), 1, 2, 3, sss.get_symbol("testing")]],
+      ["`(testing ,L testing)",
+        [sss.get_symbol("testing"), [1, 2, 3], sss.get_symbol("testing")]],
+      // ["'(1 ;test comments '\n    ;skip this line\n    2 ; more ; comments ; ) )\n    3) ; final comment", [1, 2, 3]]
     ].forEach(test_pair);
   });
 
@@ -115,6 +129,7 @@
       ["(lambda 3 3)", /illegal lambda argument list/],
       ["(lambda (x))", /wrong length/],
       ["(let ((a 1) (b 2 3)) (+ a b))", /illegal binding list/],
+      ["`,@L", /cannot splice here/],
     ].forEach(function (pair) {
       it("$0 => $1".fmt(pair[0], pair[1]), function () {
         assert.throws(function () {
