@@ -95,7 +95,7 @@
     check(x, args.length > 1);
     var bindings = args[0];
     var body = args.slice(1);
-    check(x, bindings.every(function (b) {
+    check(x, Array.isArray(bindings) && bindings.every(function (b) {
       return Array.isArray(b) && b.length === 2 && is_symbol(b[0]);
     }), "illegal binding list");
     var vars = bindings.map(function (b) { return b[0]; });
@@ -152,6 +152,7 @@
         var exp = expand(x[2]);
         if (x[0] === s_define_macro) {
           check(x, toplevel, "define-macro is only allowed at top level");
+          console.log("expand macro >>> ", sss.to_js(exp, "env"));
           var f = sss.compile(exp)(sss.env, sss.get, sss.set, sss.symbols);
           check(x, typeof f === "function", "macro must be a function");
           macros[v.symbol] = f;
