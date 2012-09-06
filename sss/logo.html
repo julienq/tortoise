@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>SSS/Logo library</title>
+    <meta charset="UTF-8">
+    <meta http-equiv="cache-control" content="no-cache">
+    <style>
+body, html {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  font-family: Univers, "Helvetica Neue", Helvetica, sans-serif;
+  background-color: #ccc;
+}
+
+#screen {
+  width: 640px;
+  margin: 0 auto;
+  height: 100%;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-box-pack: center;
+}
+canvas {
+  background-color: black;
+}
+
+    </style>
+    <script src="sss.js"></script>
+    <script src="logo.js"></script>
+    </script>
+  </head>
+  <body>
+    <div id="screen">
+      <canvas width="640" height="480"/>
+    </div>
+    <script>
+
+      logo.init_turtle_for_env(document.querySelector("canvas"), sss.env);
+      sss.eval("(fd 100)");
+      sss.eval("(rt 90)");
+      sss.eval("(fd 120)");
+
+      /*
+      var t = logo.turtle(document.querySelector("canvas"));
+      t.forward(100);
+      t.turn(90);
+      t.forward(120);
+      t.turn(90);
+      t.forward(140);
+      t.turn(-45);
+      t.forward(160);
+      */
+
+    </script>
+  </body>
+</html>
+
