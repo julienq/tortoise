@@ -39,6 +39,9 @@
       ["(f 2)", 6],
       ["(define fgh (lambda (x) (begin (define g (lambda (x) (* x 2))) (define h (lambda (x) (* x x))) (h (g (+ x 1))))))"],
       ["(fgh 2)", 36],
+      ["(+)", 0],
+      ["(*)", 1],
+      ["(- 1 2 3)", -4],
     ].forEach(test_pair);
   });
 
@@ -100,9 +103,8 @@
       ["(and)", true],
       ["(and (> 2 1) (> 2 3))", false],
       ["(define-macro unless (lambda args `(if (not ,(car args)) (begin ,@(cdr args))))) ; test `"],
-      ["(unless (= 2 (+ 1 1)) (display 2) 3 4)", 2],
-      // TODO newline handling
-      ["(unless (= 4 (+ 1 1)) (display 2) (display \"(newline)\") 3 4)", 4],
+      ["(unless (= 2 (+ 1 1)) (display 2) 3 4)"],
+      ["(unless (= 4 (+ 1 1)) 2 3 4)", 4],
       ["(quote x)", sss.get_symbol("x")],
       ["(quote (1 2 three))", [1, 2, sss.get_symbol("three")]],
       ["'x", sss.get_symbol("x")],

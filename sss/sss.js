@@ -1,6 +1,10 @@
 // A version of Peter Norvig's lis.py (http://norvig.com/lispy.html) and
 // lispy.py (http://norvig.com/lispy2.html) that compiles to Javascript
 
+// TODO I/O (ports)
+// TODO CPS conversion for TCO
+// TODO call/cc
+
 (function (sss) {
   "use strict";
 
@@ -152,7 +156,6 @@
         var exp = expand(x[2]);
         if (x[0] === s_define_macro) {
           check(x, toplevel, "define-macro is only allowed at top level");
-          console.log("expand macro >>> ", sss.to_js(exp, "env"));
           var f = sss.compile(exp)(sss.env, sss.get, sss.set, sss.symbols);
           check(x, typeof f === "function", "macro must be a function");
           macros[v.symbol] = f;
@@ -244,8 +247,9 @@
       if (x[0] === quotes["'"]) {
         return quote_js(x[1]);
       } else if (x[0] === s_if) {
-        return "$0?$1:$2".fmt(sss.to_js(x[1], env), sss.to_js(x[2], env),
-            sss.to_js(x[3], env));
+        return "$0?($1):($2)".fmt(sss.to_js(x[1], env),
+            sss.to_js(x[2], env) || "undefined",
+            sss.to_js(x[3], env) || "undefined");
       } else if (x[0] === s_set) {
         return "set($0,$1,$2)".fmt(env, JSON.stringify(x[1].symbol),
             sss.to_js(x[2], env));
@@ -302,10 +306,22 @@
 
   // Runtime environment
 
+  var fold = Array.prototype.reduce;
+
   sss.env = {
-    "+": function (x, y) { return x + y; },
-    "-": function (x, y) { return x - y; },
-    "*": function (x, y) { return x * y; },
+    "+": function () {
+      return fold.call(arguments, function (x, y) { return x + y; }, 0);
+    },
+    "-": function () {
+      return arguments.length === 0 ? 0 :
+        arguments.length === 1 ? -arguments[0] :
+        Array.prototype.slice.call(arguments, 1).reduce(function (x, y) {
+          return x - y;
+        }, arguments[0]);
+    },
+    "*": function () {
+      return fold.call(arguments, function (x, y) { return x * y; }, 1);
+    },
     "/": function (x, y) { return x / y; },
     not: function (x) { return !x; },
     ">": function (x, y) { return x > y; },
