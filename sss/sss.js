@@ -1,6 +1,7 @@
 // A version of Peter Norvig's lis.py (http://norvig.com/lispy.html) and
 // lispy.py (http://norvig.com/lispy2.html) that compiles to Javascript
 
+// TODO let
 // TODO I/O (ports)
 // TODO CPS conversion for TCO
 // TODO call/cc
@@ -17,6 +18,18 @@
     });
   }
 
+  function next_az(str) {
+    if (str === "_") {
+      return "_a";
+    } else if (str[str.length - 1] === "z") {
+      return next_az(str.substr(0, str.length - 1)) + "a";
+    } else {
+      return str.replace(/\w$/, function (c) {
+        return String.fromCharCode(c.charCodeAt(0) + 1);
+      });
+    }
+  };
+
   // Tokenizer
   sss.tokenize = function(s) {
     var tokens = [];
@@ -30,11 +43,32 @@
         return tokens;
       }
     }
-  }
+  };
 
-  var symbol = {
-    toString: function () {
-      return "$0".fmt(this.symbol);
+  // Translate Scheme vars to JS vars
+  var vars = {
+    next_var: 0,
+
+    new_var: function (v, def) {
+      var name = "_" + this.next_var.toString(36);
+      ++this.next_var;
+      this[v] = { name: name, def: def };
+      return name;
+    },
+
+    to_var: function (v) {
+      if (!(v in this)) {
+        sss.vars.new_var(v);
+      }
+      return this[v].name;
+    },
+
+    unvar: function (name) {
+      for (var v in this) {
+        if (this[v] && this[v].name === name) {
+          return v;
+        }
+      }
     }
   };
 
@@ -44,11 +78,12 @@
   // Get a symbol for a name, creating it if necessary
   sss.get_symbol = function (s) {
     if (!sss.symbols.hasOwnProperty(s)) {
-      sss.symbols[s] = Object.create(symbol);
-      sss.symbols[s].symbol = s;
+      sss.symbols[s] = { symbol: s };
     }
     return sss.symbols[s];
   }
+
+  sss.vars = Object.create(vars);
 
   var s_if = sss.get_symbol("if");
   var s_set = sss.get_symbol("set!");
@@ -111,8 +146,7 @@
   // function of two arguments, env (the top-level environment) and set (a
   // function to set values in the environment)
   sss.compile = function (x) {
-    return new Function("env", "get", "set", "symbols",
-        "return $0;".fmt(sss.to_js(x, "env")));
+    return new Function("symbols", "return $0;".fmt(sss.to_js(x, sss.vars)));
   };
 
   sss.parse = function (tokens) {
@@ -156,7 +190,7 @@
         var exp = expand(x[2]);
         if (x[0] === s_define_macro) {
           check(x, toplevel, "define-macro is only allowed at top level");
-          var f = sss.compile(exp)(sss.env, sss.get, sss.set, sss.symbols);
+          var f = sss.compile(exp)(sss.symbols);
           check(x, typeof f === "function", "macro must be a function");
           macros[v.symbol] = f;
           return;
@@ -242,44 +276,51 @@
   }
 
   // Translate lisp forms to Javascript code to be passed to compile()
-  sss.to_js = function(x, env) {
+  sss.to_js = function(x, vars) {
     if (Array.isArray(x)) {
       if (x[0] === quotes["'"]) {
         return quote_js(x[1]);
       } else if (x[0] === s_if) {
-        return "$0?($1):($2)".fmt(sss.to_js(x[1], env),
-            sss.to_js(x[2], env) || "undefined",
-            sss.to_js(x[3], env) || "undefined");
+        return "($0?($1):($2))".fmt(sss.to_js(x[1], vars),
+            sss.to_js(x[2], vars), sss.to_js(x[3], vars) || "undefined");
       } else if (x[0] === s_set) {
-        return "set($0,$1,$2)".fmt(env, JSON.stringify(x[1].symbol),
-            sss.to_js(x[2], env));
+        return "$0,$0=$1".fmt(vars.to_var(x[1].symbol), sss.to_js(x[2], vars));
       } else if (x[0] === s_define) {
-        return "$0[$1]=$2,undefined".fmt(env, JSON.stringify(x[1].symbol),
-            sss.to_js(x[2], env));
+        return "$0=$1,undefined".fmt(vars.new_var(x[1].symbol, true),
+            sss.to_js(x[2], vars));
       } else if (x[0] === s_lambda) {
-        var f = "function(){var $0_=Object.create($0);".fmt(env);
+        var vars_ = Object.create(vars);
+        var f = "function(";
         if (is_symbol(x[1])) {
-          f += "$0_[$1]=Array.prototype.slice.call(arguments);"
-            .fmt(env, JSON.stringify(x[1].symbol));
+          f += "){var $0=Array.prototype.slice.call(arguments);"
+            .fmt(vars_.new_var(x[1].symbol));
         } else {
-          x[1].forEach(function (v, i) {
-            f += "$0_[$1]=arguments[$2];".fmt(env, JSON.stringify(v.symbol), i);
-          });
+          f += x[1].map(function (s) {
+            return vars_.new_var(s.symbol);
+          }).join(",") + "){";
         }
-        return f + "return $0;}".fmt(sss.to_js(x[2], env + "_"));
+        var body = sss.to_js(x[2], vars_);
+        var defs = Object.keys(vars_).filter(function (k) {
+          return !!vars_[k].def;
+        }).map(function (k) {
+          return vars_[k].name;
+        });
+        if (defs.length > 0) {
+          f += "var $0;".fmt(defs.join(","));
+        }
+        return f + "return $0;}".fmt(body);
       } else if (x[0] === s_begin) {
         return x.slice(1).map(function (e) {
-          return sss.to_js(e, env);
+          return sss.to_js(e, vars);
         }).join(",");
       } else {
         var e = x.map(function (e) {
-          return sss.to_js(e, env);
+          return sss.to_js(e, vars);
         });
-        return "(function(f){return(typeof f===\"function\"?f:get($0,f))($1);}($2))"
-          .fmt(env, e.slice(1).join(","), e[0]);
+        return "$0($1)".fmt(e[0], e.slice(1).join(","));
       }
     } else if (is_symbol(x)) {
-      return "get($0,$1)".fmt(env, JSON.stringify(x.symbol));
+      return vars.to_var(x.symbol);
     } else if (typeof x === "string") {
       return JSON.stringify(x);
     } else if (typeof x === "undefined") {
@@ -301,14 +342,26 @@
             "#f" :
             typeof x === "string" ?
               JSON.stringify(x) :
-              typeof x === "undefined" ? "" : x.toString();
+              typeof x === "undefined" ?
+                "" :
+                is_symbol(x) ? x.symbol : x.toString();
   };
 
   // Runtime environment
 
   var fold = Array.prototype.reduce;
 
-  sss.env = {
+  function primitives(p, f) {
+    if (f) {
+      global[sss.vars.new_var(p)] = f;
+    } else {
+      Object.keys(p).forEach(function (p_) {
+        global[sss.vars.new_var(p_)] = p[p_];
+      });
+    }
+  }
+
+  primitives({
     "+": function () {
       return fold.call(arguments, function (x, y) { return x + y; }, 0);
     },
@@ -339,35 +392,14 @@
     "pair?": is_pair,
     "null?": function (x) { return Array.isArray(x) && x.length === 0; },
     "symbol?": is_symbol,
-  };
-
-  Object.getOwnPropertyNames(Math).forEach(function (m) {
-    sss.env[m] = Math[m];
   });
 
-  sss.set = function (e, name, value) {
-    if (!e) {
-      throw "cannot set undefined variable $0".fmt(name);
-    } else if (e.hasOwnProperty(name)) {
-      e[name] = value;
-    } else {
-      sss.set(Object.getPrototypeOf(e), name, value);
-    }
-  };
-
-  sss.get = function (e, name) {
-    if (!e) {
-      throw "cannot get undefined variable $0".fmt(name);
-    } else if (e.hasOwnProperty(name)) {
-      return e[name];
-    } else {
-      return sss.get(Object.getPrototypeOf(e), name);
-    }
-  }
+  Object.getOwnPropertyNames(Math).forEach(function (m) {
+    primitives(m, Math[m]);
+  }, this);
 
   sss.eval = function (str) {
-    return sss.compile(sss.parse(sss.tokenize(str)))(sss.env, sss.get, sss.set,
-      sss.symbols);
+    return sss.compile(sss.parse(sss.tokenize(str)))(sss.symbols);
   };
 
   sss.eval("(define-macro and (lambda args (if (null? args) #t (if (= (length args) 1) (car args) `(if ,(car args) (and ,@(cdr args)) #f)))))");
