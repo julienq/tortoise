@@ -3,8 +3,11 @@
 
 // TODO let
 // TODO I/O (ports)
-// TODO CPS conversion for TCO
 // TODO call/cc
+
+if (typeof global !== "object") {
+  var global = (function () { return this; }());
+}
 
 (function (sss) {
   "use strict";
@@ -13,22 +16,33 @@
   // values passed as parameters)
   String.prototype.fmt = function () {
     var args = arguments;
-    return this.replace(/\$(\d+)/g, function (s, p) {
-      return args[p] === undefined || args[p] === null ? "" : args[p];
+    return this.replace(/\$(\d+)/g, function (_, p) {
+      return args[p] == null ? "" : args[p];
     });
   }
 
-  function next_az(str) {
-    if (str === "_") {
-      return "_a";
-    } else if (str[str.length - 1] === "z") {
-      return next_az(str.substr(0, str.length - 1)) + "a";
-    } else {
-      return str.replace(/\w$/, function (c) {
-        return String.fromCharCode(c.charCodeAt(0) + 1);
-      });
+  // Trampoline calls adapted from Spencer Tipping's Javascript in 10 minutes
+  // https://github.com/spencertipping/js-in-ten-minutes
+
+  // Use a trampoline to call a function; we expect a thunk to be returned
+  // through the get_thunk() function below. Return nothing to step off the
+  // trampoline (e.g., to wait for an event before continuing.)
+  Function.prototype.trampoline = function () {
+    var c = [this, arguments];
+    var esc = arguments[0];
+    while (c && c[0] !== esc) {
+      c = c[0].apply(this, c[1]);
+    }
+    if (c) {
+      return esc.apply(this, c[1]);
     }
   };
+
+  // Return a thunk suitable for the trampoline function above.
+  Function.prototype.get_thunk = function () {
+    return [this, arguments];
+  };
+
 
   // Tokenizer
   sss.tokenize = function(s) {
@@ -46,6 +60,8 @@
   };
 
   // Translate Scheme vars to JS vars
+  // TODO create names at top level as well so that there is abways a single
+  // translation for the same name
   var vars = {
     next_var: 0,
 
@@ -146,7 +162,7 @@
   // function of two arguments, env (the top-level environment) and set (a
   // function to set values in the environment)
   sss.compile = function (x) {
-    return new Function("symbols", "return $0;".fmt(sss.to_js(x, sss.vars)));
+    return new Function("k", "return " + sss.to_js(x, sss.vars, "k"));
   };
 
   sss.parse = function (tokens) {
@@ -276,30 +292,32 @@
   }
 
   // Translate lisp forms to Javascript code to be passed to compile()
-  sss.to_js = function(x, vars) {
+  sss.to_js = function(x, vars, k) {
     if (Array.isArray(x)) {
       if (x[0] === quotes["'"]) {
         return quote_js(x[1]);
       } else if (x[0] === s_if) {
-        return "($0?($1):($2))".fmt(sss.to_js(x[1], vars),
-            sss.to_js(x[2], vars), sss.to_js(x[3], vars) || "undefined");
+        return sss.to_js(x[1], vars, "function(r){if(r){$0}$1}"
+            .fmt(sss.to_js(x[2], vars, k),
+              x[3] ? sss.to_js(x[3], vars, k) : ""));
       } else if (x[0] === s_set) {
-        return "$0,$0=$1".fmt(vars.to_var(x[1].symbol), sss.to_js(x[2], vars));
+        return sss.to_js(x[2], vars,
+          "function(r){$0,$0=r}".fmt(vars.to_var(x[1].symbol)));
       } else if (x[0] === s_define) {
-        return "$0=$1,undefined".fmt(vars.new_var(x[1].symbol, true),
-            sss.to_js(x[2], vars));
+        return sss.to_js(x[2], vars,
+          "function(r){$0=r}".fmt(vars.new_var(x[1].symbol, true)));
       } else if (x[0] === s_lambda) {
         var vars_ = Object.create(vars);
         var f = "function(";
         if (is_symbol(x[1])) {
-          f += "){var $0=Array.prototype.slice.call(arguments);"
+          f += "k){var $0=Array.prototype.slice.call(arguments);"
             .fmt(vars_.new_var(x[1].symbol));
         } else {
           f += x[1].map(function (s) {
             return vars_.new_var(s.symbol);
-          }).join(",") + "){";
+          }).join(",") + ",k){";
         }
-        var body = sss.to_js(x[2], vars_);
+        var body = sss.to_js(x[2], vars_, k);
         var defs = Object.keys(vars_).filter(function (k) {
           return !!vars_[k].def;
         }).map(function (k) {
@@ -310,14 +328,19 @@
         }
         return f + "return $0;}".fmt(body);
       } else if (x[0] === s_begin) {
+        // TODO
         return x.slice(1).map(function (e) {
           return sss.to_js(e, vars);
         }).join(",");
       } else {
-        var e = x.map(function (e) {
-          return sss.to_js(e, vars);
-        });
-        return "$0($1)".fmt(e[0], e.slice(1).join(","));
+        var f = x.shift();
+        
+        
+        
+        return "$0.get_thunk($1,$2)".fmt(sss.to_js(f, vars, k),
+            x.map(function (x_) {
+              return sss.to_js(x_, vars, k);
+            }).join(","), k);
       }
     } else if (is_symbol(x)) {
       return vars.to_var(x.symbol);
@@ -353,12 +376,21 @@
 
   function primitives(p, f) {
     if (f) {
-      global[sss.vars.new_var(p)] = f;
+      global[sss.vars.new_var(p)] = wrap(f);
     } else {
       Object.keys(p).forEach(function (p_) {
-        global[sss.vars.new_var(p_)] = p[p_];
+        global[sss.vars.new_var(p_)] = wrap(p[p_]);
       });
     }
+  }
+
+  function wrap(f) {
+    return function () {
+      var l = arguments.length - 1;
+      var args = Array.prototype.slice.call(arguments, 0, l);
+      var k = arguments[l];
+      return k.get_thunk(f.apply(undefined, args));
+    };
   }
 
   primitives({
@@ -402,6 +434,6 @@
     return sss.compile(sss.parse(sss.tokenize(str)))(sss.symbols);
   };
 
-  sss.eval("(define-macro and (lambda args (if (null? args) #t (if (= (length args) 1) (car args) `(if ,(car args) (and ,@(cdr args)) #f)))))");
+  // sss.eval("(define-macro and (lambda args (if (null? args) #t (if (= (length args) 1) (car args) `(if ,(car args) (and ,@(cdr args)) #f)))))");
 
 }(typeof exports === "object" ? exports : window.sss = {}));
