@@ -38,12 +38,12 @@
     },
 
     get_y: function () {
-      return this.cy + this.context.canvas.height / 2;
+      return this.context.canvas.height / 2 - this.cy;
     },
 
     get_h: function () {
       return radtoh(this.th);
-    }
+    },
 
     set_x: function (x) {
       this.cx = this.context.canvas.width / 2 + x;
