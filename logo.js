@@ -1,10 +1,311 @@
-var flexo = require("flexo");
+(function (logo) {
+  "use strict";
 
-// TODO arrays
+  // Simple format function for messages and templates. Use %0, %1... as slots
+  // for parameters. %% is also replaced by %. Null and undefined are replaced
+  // by an empty string.
+  String.prototype.fmt = function () {
+    var args = arguments;
+    return this.replace(/%(\d+|%)/g, function (_, p) {
+      return p === "%" ? "%" : args[p] == null ? "" : args[p];
+    });
+  };
 
+
+  // Tokenizer
+
+  var urtoken = {};
+
+  urtoken.error = function (message) {
+    throw "Error line %0 near %1: %2".fmt(this.line, this, message);
+  };
+
+  // Formatted output, to be overridden
+  logo.format_token = {
+    "": function () { return this.value; }
+  };
+
+  urtoken.toString = function () {
+    var fmt = logo.format_token[this.type] || logo.format_token[""];
+    return fmt.call(this);
+  }
+
+  var tokenizer = logo.tokenizer = {};
+
+  tokenizer.init = function(line) {
+    this.line = line || 0;
+    this.open = [];
+    this.list = 0;
+    this.comment = false;
+    this.tilda = false;
+    this.escaped = false;
+    this.bars = false;
+    this.input = "";
+    this.tokens = [];
+    this.i = 0;
+    return this;
+  };
+
+  // Get the next token or add to an already created token
+  tokenizer.next_token = function() {
+    this.tilda = false;
+    this.comment = false;
+    this.escaped = false;
+    var l = this.input.length;
+    var token;  // current token (may continue from leftover token)
+    var begin;  // beginning of a line (start of input or following a newline)
+
+    if (this.leftover) {
+      // Continue reading token after line break (after a ~ or escaped newline)
+      token = this.leftover;
+      delete this.leftover;
+    } else {
+      // Look for a new token
+      for (; this.i < l && /\s/.test(this.input[this.i]); ++this.i) {
+        if (this.input[this.i] === "\n") ++this.line;
+      }
+      if (this.i >= l) return;
+      var c = this.input[this.i++];
+      var token = Object.create(urtoken);
+      token.line = this.line + 1;
+      if ((this.i === 1 || this.input[this.i - 2] === "\n") &&
+          c === "#" && this.input[this.i] === "!") {
+        this.comment = true;
+        ++this.i;
+      } else if (c === ";") {
+        this.comment = true;
+      } else if (c === "~" && this.input[this.i] === "\n") {
+        ++this.i;
+        ++this.line;
+        this.tilda = true;
+        return;
+      } else if (c === "\\" && this.i < l) {
+        this.escaped = true;
+        token.value = "";
+        token.type = "name";
+      } else if (c === "|") {
+        this.bars = true;
+        token.surface = c;
+        token.value = "";
+        token.type = this.list > 0 ? "word" : "name";
+        if (this.list > 0) {
+          token.number = true;
+          token.dotted = false;
+        }
+      } else if (c === "[") {
+        this.open.push(c);
+        ++this.list;
+        token.type = "separator";
+        token.value = token.surface = c;
+        return token;
+      } else if (c === "]") {
+        var open = this.open.pop();
+        if (open === "[") {
+          --this.list;
+          token.type = "separator";
+          token.value = token.surface = c;
+        } else {
+          token.type = "error";
+          token.surface = c;
+          token.value = "Unmatched \"]\"";
+        }
+        return token;
+      } else if (this.list === 0) {
+        if (c === "(" || c === "{") {
+          this.open.push(c);
+          token.type = "separator";
+          token.value = token.surface = c;
+          return token;
+        } else if (c === ")" || c === "}") {
+          var open = this.open.pop();
+          if ((open === "(" && c === ")") || (open === "{" && c === "}")) {
+            token.type = "separator"
+            token.value = token.surface = c;
+          } else {
+            token.type = "error";
+            token.surface = c;
+            token.value = "Unmatched \"%0\"".fmt(c);
+          }
+          return token;
+        } else if (c === "\"") {
+          token.value = "";
+          token.surface = c;
+          token.type = "word";
+          token.number = true;
+          token.dotted = false;
+        } else if (c === "-") {
+          token.value = token.surface = c;
+          token.number = true;
+          token.dotted = false;
+          token.type = "name";
+        } else if (c === "<") {
+          if (this.input[this.i] === "=" || this.input[this.i] === ">") {
+            c += this.input[this.i++];
+          }
+          token.value = token.surface = c;
+          token.type = "infix";
+          return token;
+        } else if (c === ">") {
+          if (this.input[this.i] === "=") c += this.input[this.i++];
+          token.value = token.surface = c;
+          token.type = "infix";
+          return token;
+        } else if (c === "+" || c === "*" || c === "/" || c === "=") {
+          // note that "-" is handled as a number at the moment
+          token.value = token.surface = c;
+          token.type = "infix";
+          return token;
+        } else {
+          token.value = c.toUpperCase();
+          token.surface = c;
+          token.number = true;
+          token.dotted = c === ".";
+          token.type = "name";
+        }
+      } else {
+        token.value = c;
+        token.surface = c;
+        token.type = "word";
+      }
+    }
+
+    var add_c = function () {
+      var ok = true;
+      if (token.number) {
+        if (c === ".") {
+          if (token.dotted) {
+            delete token.number;
+            delete token.dotted;
+            ok = token.surface[0] !== "-";
+          } else {
+            token.dotted = true;
+          }
+        } else if (!/\d/.test(c)) {
+          delete token.number;
+          delete token.dotted;
+          ok = token.surface[0] !== "-";
+        }
+      }
+      if (!ok) {
+        if (token.surface.length > 1) {
+          this.leftover = { type: token.type, surface: token.surface.substr(1),
+            value: token.value.substr(1), line: token.line };
+        }
+        token.value = token.surface = "-";
+        token.type = "infix";
+        return false;
+      }
+      token.surface += c;
+      token.value += token.type === "word" ? c : c.toUpperCase();
+      return true;
+    };
+
+    var check_number = function () {
+      if (token.number) {
+        delete token.number;
+        delete token.dotted;
+        var v = parseFloat(token.value);
+        if (!isNaN(v)) {
+          token.value = v;
+          token.type = "number";
+        }
+      }
+    };
+
+    // Keep adding to the current token (name, word, comment)
+    while (this.i < l) {
+      c = this.input[this.i];
+      if (this.escaped) {
+        if (!add_c.call(this)) return token;
+        if (c === "\n" && this.i === l - 1) {
+          ++this.line;
+          this.leftover = token;
+          return;
+        } else {
+          this.escaped = false;
+        }
+      } else if (this.bars) {
+        if (c === "|") {
+          token.surface += c;
+          this.bars = false;
+        } else if (c === "\\" && this.i < l - 1) {
+          token.surface += c;
+          this.escaped = true;
+        } else {
+          if (!add_c.call(this)) return token;
+          if (c === "\n" && this.i === l - 1) {
+            ++this.line;
+            this.leftover = token;
+            return;
+          }
+        }
+      } else {
+        if (c === "~" && this.input[this.i + 1] === "\n") {
+          ++this.i;
+          ++this.line;
+          this.tilda = true;
+          this.leftover = token;
+          return;
+        }
+        if (!this.comment) {
+          if (c === ";") {
+            this.comment = true;
+            this.leftover = token;
+          } else if (c === "\\" && this.i < l - 1) {
+            this.escaped = true;
+            token.surface += c;
+          } else if (c === "|") {
+            this.bars = true;
+            this.surface += c;
+          } else if (this.list === 0 && (/\s/.test(c) || c === "[" ||
+                c === "]" || c === "(" || c === ")" || c === "{" || c === "}" ||
+                c === "+" || c === "-" || c === "*" || c === "/" || c === "=" ||
+                c === "<" || c === ">") ||
+              (this.list > 0 && (/\s/.test(c) || c === "[" || c === "]"))) {
+            check_number();
+            return token;
+          } else {
+            if (!add_c.call(this)) return token;
+          }
+        }
+      }
+      ++this.i;
+    }
+    if (token.type && !this.tilda && !this.escaped && !this.bars) {
+      delete this.leftover;
+      check_number();
+      return token;
+    }
+  };
+
+  // Tokenize input and call a continuation with either a list of tokens or a
+  // prompt for more tokens.
+  // TODO handle END on its own line here
+  tokenizer.tokenize = function(input, f) {
+    this.i = 0;
+    this.input = input;
+    var token;
+    do {
+      token = this.next_token();
+      if (token) {
+        this.tokens.push(token);
+      }
+    } while (token);
+    if (this.open.length === 0 && !this.leftover && !this.tilda) {
+      var tokens = this.tokens.slice(0);
+      this.tokens = [];
+      f("?", tokens);
+    } else {
+      f(this.tilda ? "~" : this.escaped ? "\\" : this.bars ? "|" :
+          this.open[this.open.length - 1] || "?");
+    }
+  };
+
+}(typeof exports === "object" ? exports : this.logo = {}));
+
+/*
 // Create an empty, doubly-linked list
-function empty_list()
-{
+function empty_list() {
   var list = Object.create({
     listp: true,
 
@@ -330,300 +631,6 @@ exports.interpreter =
 };
 
 
-// TODO fix escaped newline
-exports.tokenizer =
-{
-  init: function(line)
-  {
-    this.line = line || 0;
-    this.open = [];
-    this.list = 0;
-    this.comment = false;
-    this.tilda = false;
-    this.escaped = false;
-    this.bars = false;
-    this.input = "";
-    this.tokens = [];
-    this.i = 0;
-    return this;
-  },
-
-  // Get the next token or add to an already created token
-  next_token: function()
-  {
-    var urtoken =
-    {
-      error: function(message)
-      {
-        throw "Error line {0} near {1}: {2}".fmt(this.line, this, message);
-      },
-
-      toString: function()
-      {
-        return this.type === "word" ?
-          "\033[00;46m{0}\033[00m".fmt(this.value || " ") :
-            this.type === "number" ? "\033[00;42m{0}\033[00m".fmt(this.value) :
-            this.type === "error" ? "\033[00;41m{0}\033[00m".fmt(this.surface) :
-            "\033[00;47m{0}\033[00m".fmt(this.value);
-      }
-    };
-
-    this.tilda = false;
-    this.comment = false;
-    this.escaped = false;
-    var l = this.input.length;
-    var token;  // current token (may continue from leftover token)
-    var begin;  // beginning of a line (start of input or following a newline)
-
-    if (this.leftover) {
-      // Continue reading token after line break (after a ~ or escaped newline)
-      token = this.leftover;
-      delete this.leftover;
-    } else {
-      // Look for a new token
-      for (; this.i < l && /\s/.test(this.input[this.i]); ++this.i) {
-        if (this.input[this.i] === "\n") ++this.line;
-      }
-      if (this.i >= l) return;
-      var c = this.input[this.i++];
-      var token = Object.create(urtoken);
-      token.line = this.line + 1;
-      if ((this.i === 1 || this.input[this.i - 2] === "\n") &&
-          c === "#" && this.input[this.i] === "!") {
-        this.comment = true;
-        ++this.i;
-      } else if (c === ";") {
-        this.comment = true;
-      } else if (c === "~" && this.input[this.i] === "\n") {
-        ++this.i;
-        ++this.line;
-        this.tilda = true;
-        return;
-      } else if (c === "\\" && this.i < l) {
-        this.escaped = true;
-        token.value = "";
-        token.type = "name";
-      } else if (c === "|") {
-        this.bars = true;
-        token.surface = c;
-        token.value = "";
-        token.type = this.list > 0 ? "word" : "name";
-        if (this.list > 0) {
-          token.number = true;
-          token.dotted = false;
-        }
-      } else if (c === "[") {
-        this.open.push(c);
-        ++this.list;
-        token.type = "separator";
-        token.value = token.surface = c;
-        return token;
-      } else if (c === "]") {
-        var open = this.open.pop();
-        if (open === "[") {
-          --this.list;
-          token.type = "separator";
-          token.value = token.surface = c;
-        } else {
-          token.type = "error";
-          token.surface = c;
-          token.value = "Unmatched \"]\"";
-        }
-        return token;
-      } else if (this.list === 0) {
-        if (c === "(" || c === "{") {
-          this.open.push(c);
-          token.type = "separator";
-          token.value = token.surface = c;
-          return token;
-        } else if (c === ")" || c === "}") {
-          var open = this.open.pop();
-          if ((open === "(" && c === ")") || (open === "{" && c === "}")) {
-            token.type = "separator"
-            token.value = token.surface = c;
-          } else {
-            token.type = "error";
-            token.surface = c;
-            token.value = "Unmatched \"{0}\"".fmt(c);
-          }
-          return token;
-        } else if (c === "\"") {
-          token.value = "";
-          token.surface = c;
-          token.type = "word";
-          token.number = true;
-          token.dotted = false;
-        } else if (c === "-") {
-          token.value = token.surface = c;
-          token.number = true;
-          token.dotted = false;
-          token.type = "name";
-        } else if (c === "<") {
-          if (this.input[this.i] === "=" || this.input[this.i] === ">") {
-            c += this.input[this.i++];
-          }
-          token.value = token.surface = c;
-          token.type = "infix";
-          return token;
-        } else if (c === ">") {
-          if (this.input[this.i] === "=") c += this.input[this.i++];
-          token.value = token.surface = c;
-          token.type = "infix";
-          return token;
-        } else if (c === "+" || c === "*" || c === "/" || c === "=") {
-          // note that "-" is handled as a number at the moment
-          token.value = token.surface = c;
-          token.type = "infix";
-          return token;
-        } else {
-          token.value = c.toUpperCase();
-          token.surface = c;
-          token.number = true;
-          token.dotted = c === ".";
-          token.type = "name";
-        }
-      } else {
-        token.value = c;
-        token.surface = c;
-        token.type = "word";
-      }
-    }
-
-    function add_c()
-    {
-      var ok = true;
-      if (token.number) {
-        if (c === ".") {
-          if (token.dotted) {
-            delete token.number;
-            delete token.dotted;
-            ok = token.surface[0] !== "-";
-          } else {
-            token.dotted = true;
-          }
-        } else if (!/\d/.test(c)) {
-          delete token.number;
-          delete token.dotted;
-          ok = token.surface[0] !== "-";
-        }
-      }
-      if (!ok) {
-        if (token.surface.length > 1) {
-          this.leftover = { type: token.type, surface: token.surface.substr(1),
-            value: token.value.substr(1), line: token.line };
-        }
-        token.value = token.surface = "-";
-        token.type = "infix";
-        return false;
-      }
-      token.surface += c;
-      token.value += token.type === "word" ? c : c.toUpperCase();
-      return true;
-    }
-
-    function check_number()
-    {
-      if (token.number) {
-        delete token.number;
-        delete token.dotted;
-        var v = parseFloat(token.value);
-        if (!isNaN(v)) {
-          token.value = v;
-          token.type = "number";
-        }
-      }
-    }
-
-    // Keep adding to the current token (name, word, comment)
-    while (this.i < l) {
-      c = this.input[this.i];
-      if (this.escaped) {
-        if (!add_c.call(this)) return token;
-        if (c === "\n" && this.i === l - 1) {
-          ++this.line;
-          this.leftover = token;
-          return;
-        } else {
-          this.escaped = false;
-        }
-      } else if (this.bars) {
-        if (c === "|") {
-          token.surface += c;
-          this.bars = false;
-        } else if (c === "\\" && this.i < l - 1) {
-          token.surface += c;
-          this.escaped = true;
-        } else {
-          if (!add_c.call(this)) return token;
-          if (c === "\n" && this.i === l - 1) {
-            ++this.line;
-            this.leftover = token;
-            return;
-          }
-        }
-      } else {
-        if (c === "~" && this.input[this.i + 1] === "\n") {
-          ++this.i;
-          ++this.line;
-          this.tilda = true;
-          this.leftover = token;
-          return;
-        }
-        if (!this.comment) {
-          if (c === ";") {
-            this.comment = true;
-            this.leftover = token;
-          } else if (c === "\\" && this.i < l - 1) {
-            this.escaped = true;
-            token.surface += c;
-          } else if (c === "|") {
-            this.bars = true;
-            this.surface += c;
-          } else if (this.list === 0 && (/\s/.test(c) || c === "[" ||
-                c === "]" || c === "(" || c === ")" || c === "{" || c === "}" ||
-                c === "+" || c === "-" || c === "*" || c === "/" || c === "=" ||
-                c === "<" || c === ">") ||
-              (this.list > 0 && (/\s/.test(c) || c === "[" || c === "]"))) {
-            check_number();
-            return token;
-          } else {
-            if (!add_c.call(this)) return token;
-          }
-        }
-      }
-      ++this.i;
-    }
-    if (token.type && !this.tilda && !this.escaped && !this.bars) {
-      delete this.leftover;
-      check_number();
-      return token;
-    }
-  },
-
-  // Tokenize input and call a continuation with either a list of tokens or a
-  // prompt for more tokens.
-  // TODO handle END on its own line here
-  tokenize: function(input, f)
-  {
-    this.i = 0;
-    this.input = input;
-    var token;
-    do {
-      token = this.next_token();
-      if (token) this.tokens.push(token);
-    } while (token);
-    if (this.open.length === 0 && !this.leftover && !this.tilda) {
-      var tokens = this.tokens.slice(0);
-      this.tokens = [];
-      f("?", tokens);
-    } else {
-      f(this.tilda ? "~" : this.escaped ? "\\" : this.bars ? "|" :
-          this.open[this.open.length - 1] || "?");
-    }
-  }
-};
-
-
 // TODO fix infix (including parens)
 // TODO error for functions with not enough input
 exports.parser =
@@ -875,3 +882,4 @@ exports.parser =
     return this.expressions();
   }
 };
+*/
