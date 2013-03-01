@@ -1,5 +1,3 @@
-// Test tokenizer
-
 var rli = require("readline").createInterface(process.stdin, process.stdout);
 rli.on("close", function () {
   process.stdout.write("\n");
@@ -14,8 +12,7 @@ function prompt(p, f) {
   rli.prompt();
 }
 
-var logo = require("../logo.js");
-var tokenizer = Object.create(logo.tokenizer).init();
+var logo = require("./logo.js");
 
 logo.format_token = {
   "": function () { return "\033[00;47m%0\033[00m".fmt(this.value); },
@@ -25,6 +22,7 @@ logo.format_token = {
 };
 
 var tokenizer = Object.create(logo.tokenizer).init();
+var parser = Object.create(logo.parser).init();
 
 function repl(line) {
   tokenizer.tokenize(line + "\n", function (p, tokens) {

@@ -5,9 +5,9 @@ var assert = typeof require === "function" && require("chai").assert ||
 var logo = typeof require === "function" && require("../logo.js") ||
   window.logo;
 
-describe("Tokenizer", function () {
+var tokenizer, parser;
 
-  var tokenizer;
+describe("Tokenizer", function () {
 
   describe("Sanity checks", function () {
     it("logo.tokenizer is defined", function () {
@@ -243,6 +243,21 @@ describe("Tokenizer", function () {
       });
     });
 
+  });
+
+});
+
+
+describe("Parser", function () {
+
+  describe("Sanity checks", function () {
+    it("logo.parser is defined", function () {
+      assert.isObject(logo.parser);
+    });
+    parser = Object.create(logo.parser).init();
+    it("new parsers can be created", function () {
+      assert.isObject(parser);
+    });
   });
 
 });

@@ -309,8 +309,7 @@
 
 
   // Parser
-  // TODO fix infix (including parens)
-  // TODO error for functions with not enough input
+  // Cf. http://javascript.crockford.com/tdop/tdop.html
 
   function self() {
     return this;
@@ -386,39 +385,23 @@
     this.infix("<>", 40, "NOTEQUALP");
 
     this.prefix("[", function() {
-        var list = { arity: "list", value: [] };
-        while (true) {
-          if (parser.token.id === "]") {
-            parser.advance();
-            break;
-          } else if (parser.token.id === "(end)") {
-            break;
-          }
-          list.value.push(parser.expression(0));
+      for (var list = { arity: "list", value: [] }; true;) {
+        if (parser.token.id === "]") {
+          parser.advance();
+          break;
+        } else if (parser.token.id === "(end)") {
+          break;
         }
-        return list;
-      });
+        list.value.push(parser.parse_expression(0));
+      }
+      return list;
+    });
 
     this.prefix("(", function() {
-        var expr;
-        if (parser.token.arity === "name") {
-          expr = { arity: "call", value: parser.token.value, args: [] };
-          parser.advance();
-          while (true) {
-            if (parser.token.id === ")") {
-              parser.advance();
-              break;
-            } else if (parser.token.id === "(end)") {
-              break;
-            }
-            if (expr.args) expr.args.push(parser.expression(0));
-          }
-        } else {
-          expr = parser.expression(0);
-          parser.advance(")");
-        }
-        return expr;
-      });
+      var expr = this.parse_expression(0);
+      this.advance(")");
+      return expr;
+    });
 
     this.root_scope = new_scope();
     return this;
@@ -431,12 +414,13 @@
     delete this.token;
     this.scope = new_scope(this.root_scope);
     this.advance();
-    return this.expressions();
+    return this.parse_expressions();
   }
 
-  parser.advance = function(id) {
+  // Advance to the next token, possibly expecting an id
+  parser.advance = function (id) {
     if (id && this.token.id !== id) {
-      this.token.error("Expected {0}.".fmt(id));
+      this.token.error("Expected '%0'.".fmt(id));
     }
     if (this.i >= this.tokens.length) {
       this.token = this.symtab["(end)"];
@@ -451,12 +435,12 @@
     } else if (a === "infix" || a === "separator") {
       o = this.symtab[v];
       if (!o) {
-        t.error("Unknown {0}."
+        t.error("Unknown %0."
             .fmt(a === "infix" ? "infix operator" : "separator"));
       }
     } else if (a === "word" || a === "number") {
       a = "literal";
-      o = this.symtab["(literal)".fmt(a)];
+      o = this.symtab["(literal)"];
     } else {
       t.error("Unexpected token.");
     }
@@ -466,16 +450,25 @@
     this.token.arity = a;
   };
 
+  // Create a new symbol with given id and binding power
   parser.symbol = function(id, bp) {
     bp = bp || 0;
     var s = this.symtab[id];
     if (s) {
-      if (bp >= s.lbp) s.lbp = bp;
+      if (bp >= s.lbp) {
+        s.lbp = bp;
+      }
     } else {
       s = Object.create({
-        error: function(message) { throw message; },
-        nud: function() { this.error("Undefined."); },
-        led: function(left) { this.error("Missing operator."); }
+        error: function(message) {
+          throw message;
+        },
+        nud: function() {
+          this.error("Undefined.");
+        },
+        led: function(left) {
+          this.error("Missing operator.");
+        }
       });
       s.id = s.value = id;
       s.lbp = bp;
@@ -484,7 +477,7 @@
     return s;
   };
 
-  parser.expression = function(rbp) {
+  parser.parse_expression = function(rbp) {
     var t = this.token;
     this.advance();
     var left = t.nud();
@@ -503,7 +496,7 @@
       return {
         arity: "infix",
         value: name,
-        args: [left, parser.expression(bp)]
+        args: [left, parser.parse_expression(bp)]
       };
     };
     return s;
@@ -523,13 +516,13 @@
       return {
         arity: "call",
         value: name,
-        args: flexo.times(n, function() { return parser.expression(0); })
+        args: flexo.times(n, function() { return parser.parse_expression(0); })
       };
     }
     return f;
   };
 
-  parser.expressions = function() {
+  parser.parse_expressions = function() {
     for (var exprs = []; true;) {
       if (this.token.id === "(end)") {
         break;
@@ -540,7 +533,7 @@
         this.scope.reserve(e);
         exprs.push(e.nud());
       } else {
-        exprs.push(this.expression(0));
+        exprs.push(this.parse_expression(0));
       }
     }
     return exprs;
