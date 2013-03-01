@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Tortoise</title>
+    <meta charset="UTF-8">
+    <meta http-equiv="cache-control" content="no-cache">
+    <style>
+
+body {
+  font-family: Univers, "Helvetica Neue", Helvetica, sans-serif;
+}
+
+a {
+  text-decoration: none; color: #ff4040;
+}
+
+.token {
+  font-family: Inconsolata, monospace;
+  background-color: #ddd;
+  padding: 0 .2em;
+}
+
+.token.prompt {
+  background-color: black;
+  color: white;
+}
+
+.token.error {
+  background-color: red;
+  color: yellow;
+}
+
+.token.number {
+  background-color: #8f0;
+}
+
+.token.word {
+  background-color: #08f;
+  color: white;
+}
+
+
+    </style>
+  </head>
+  <body>
+    <script src="logo.js"></script>
+    <script>
+
+logo.format_token = {
+  "": function () {
+    return "<span class=\"token\">%0</span>".fmt(this.value);
+  },
+  error: function () {
+    return "<span class=\"token error\">%0</span>".fmt(this.surface);
+  },
+  "number": function () {
+    return "<span class=\"token number\">%0</span>".fmt(this.value);
+  },
+  word: function () {
+    return "<span class=\"token word\">%0</span>".fmt(this.value || " ");
+  }
+};
+
+
+function show(prompt, tokens) {
+  if (tokens) {
+    var p = document.body.appendChild(document.createElement("p"));
+    p.innerHTML = "<span class=\"token prompt\">%0</span> ".fmt(prompt) +
+      tokens.join(" ");
+  }
+}
+
+var tokenizer = Object.create(logo.tokenizer).init();
+
+function tokenize(input) {
+  tokenizer.tokenize(input, show);
+}
+
+    </script>
+  </body>
+</html>
