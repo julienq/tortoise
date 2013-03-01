@@ -152,18 +152,20 @@ describe("Tokenizer", function () {
       });
     });
 
-    it("Infix operator: +, -, *, /, =, <, >, and <>", function (done) {
-      tokenizer.tokenize("+-*/=< > <>", function (p, tokens) {
+    it("Infix operator: +, -, *, /, =, <, >, <=, >=, and <>", function (done) {
+      tokenizer.tokenize("+-*/=><<=>=<>", function (p, tokens) {
         assert.strictEqual(p, "?");
-        assert.strictEqual(tokens.length, 8);
+        assert.strictEqual(tokens.length, 10);
         assert.strictEqual(tokens[0].value, "+");
         assert.strictEqual(tokens[1].value, "-");
         assert.strictEqual(tokens[2].value, "*");
         assert.strictEqual(tokens[3].value, "/");
         assert.strictEqual(tokens[4].value, "=");
-        assert.strictEqual(tokens[5].value, "<");
-        assert.strictEqual(tokens[6].value, ">");
-        assert.strictEqual(tokens[7].value, "<>");
+        assert.strictEqual(tokens[5].value, ">");
+        assert.strictEqual(tokens[6].value, "<");
+        assert.strictEqual(tokens[7].value, "<=");
+        assert.strictEqual(tokens[8].value, ">=");
+        assert.strictEqual(tokens[9].value, "<>");
         tokens.forEach(function (token) {
           assert.strictEqual(tokens[0].type, "infix");
         });
