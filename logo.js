@@ -57,9 +57,12 @@
 
     if (this.leftover) {
       // Continue reading token after line break (after a ~ or escaped newline)
-      token = this.leftover;
+      if (this.leftover.hasOwnProperty("value")) {
+        token = this.leftover;
+      }
       delete this.leftover;
-    } else {
+    }
+    if (!token) {
       // Look for a new token
       for (; this.i < l && /\s/.test(this.input[this.i]); ++this.i) {
         if (this.input[this.i] === "\n") ++this.line;
@@ -81,6 +84,7 @@
         return;
       } else if (c === "\\" && this.i < l) {
         this.escaped = true;
+        token.surface = c;
         token.value = "";
         token.type = "name";
       } else if (c === "|") {
@@ -216,7 +220,9 @@
     while (this.i < l) {
       c = this.input[this.i];
       if (this.escaped) {
-        if (!add_c.call(this)) return token;
+        if (!add_c.call(this)) {
+          return token;
+        }
         if (c === "\n" && this.i === l - 1) {
           ++this.line;
           this.leftover = token;
