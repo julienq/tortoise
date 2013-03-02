@@ -152,6 +152,23 @@ describe("Tokenizer", function () {
       });
     });
 
+    it("Dots: :foo is synonymous with THING \"foo", function (done) {
+      tokenizer.tokenize(":foo : bar", function (p, tokens) {
+        assert.strictEqual(p, "?");
+        assert.strictEqual(tokens.length, 3);
+        assert.strictEqual(tokens[0].type, "dots");
+        assert.strictEqual(tokens[0].value, "foo");
+        assert.strictEqual(tokens[0].surface, ":foo");
+        assert.strictEqual(tokens[1].type, "dots");
+        assert.strictEqual(tokens[1].value, "");
+        assert.strictEqual(tokens[1].surface, ":");
+        assert.strictEqual(tokens[2].type, "name");
+        assert.strictEqual(tokens[2].value, "BAR");
+        assert.strictEqual(tokens[2].surface, "bar");
+        done();
+      });
+    });
+
     it("Infix operator: +, -, *, /, =, <, >, <=, >=, and <>", function (done) {
       tokenizer.tokenize("+-*/=><<=>=<>", function (p, tokens) {
         assert.strictEqual(p, "?");

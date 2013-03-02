@@ -137,6 +137,12 @@
           token.type = "word";
           token.number = true;
           token.dotted = false;
+        } else if (c === ":") {
+          token.value = "";
+          token.surface = c;
+          token.type = "dots";
+          token.number = true;
+          token.dotted = false;
         } else if (c === "-") {
           token.value = token.surface = c;
           token.number = true;
@@ -200,7 +206,8 @@
         return false;
       }
       token.surface += c;
-      token.value += token.type === "word" ? c : c.toUpperCase();
+      token.value += token.type === "word" || token.type === "dots" ? c :
+        c.toUpperCase();
       return true;
     };
 
@@ -332,7 +339,7 @@
     return n;
   };
 
-  urscope.find = function(n) {
+  urscope.find = function(parser, n) {
     var e = this;
     var o;
     while (true) {
@@ -371,8 +378,22 @@
     this.symbol("]");
     this.symbol(")");
     this.symbol("(end)");
-    this.symbol("(name)");
+    this.symbol("(name)").nud = function () {
+      // Handle parens
+      return this;
+    };
     this.symbol("(literal)").nud = self;
+    this.symbol("(dots)").nud = function (parser) {
+      var name = Object.create(this.symtab("(literal)"));
+      name.value = this.value;
+      name.surface = this.surface;
+      name.arity = "literal";
+      return {
+        arity: "call",
+        value: parser.scope.find(parser, "THING"),
+        args: [name]
+      };
+    };
     this.infix("+", 50, "SUM");
     this.infix("-", 50, "DIFFERENCE");
     this.infix("*", 60, "PRODUCT");
@@ -384,7 +405,7 @@
     this.infix(">=", 40, "GREATEREQUALP");
     this.infix("<>", 40, "NOTEQUALP");
 
-    this.prefix("[", function() {
+    this.prefix("[", function(parser) {
       for (var list = { arity: "list", value: [] }; true;) {
         if (parser.token.id === "]") {
           parser.advance();
@@ -397,9 +418,9 @@
       return list;
     });
 
-    this.prefix("(", function() {
-      var expr = this.parse_expression(0);
-      this.advance(")");
+    this.prefix("(", function(parser) {
+      var expr = parser.parse_expression(0);
+      parser.advance(")");
       return expr;
     });
 
@@ -414,7 +435,8 @@
     delete this.token;
     this.scope = new_scope(this.root_scope);
     this.advance();
-    return this.parse_expressions();
+    return this.parse_expression(0);
+    // return this.parse_expressions();
   }
 
   // Advance to the next token, possibly expecting an id
@@ -431,7 +453,7 @@
     var a = t.type;
     var o;
     if (a === "name") {
-      o = this.scope.find(v);
+      o = this.scope.find(this, v);
     } else if (a === "infix" || a === "separator") {
       o = this.symtab[v];
       if (!o) {
@@ -466,7 +488,7 @@
         nud: function() {
           this.error("Undefined.");
         },
-        led: function(left) {
+        led: function() {
           this.error("Missing operator.");
         }
       });
@@ -480,11 +502,11 @@
   parser.parse_expression = function(rbp) {
     var t = this.token;
     this.advance();
-    var left = t.nud();
+    var left = t.nud(this);
     while (rbp < this.token.lbp) {
       t = this.token;
       this.advance();
-      left = t.led(left);
+      left = t.led(this, left);
     }
     return left;
   };
@@ -492,7 +514,7 @@
   parser.infix = function(id, bp, name) {
     var s = this.symbol(id, bp);
     var parser = this;
-    s.led = function(left) {
+    s.led = function (parser, left) {
       return {
         arity: "infix",
         value: name,
@@ -512,7 +534,7 @@
   parser.add_function = function(name, n) {
     var f = this.symbol(name);
     var parser = this;
-    f.nud = function() {
+    f.nud = function (parser) {
       return {
         arity: "call",
         value: name,
@@ -531,7 +553,7 @@
       if (e.nud) {
         this.advance();
         this.scope.reserve(e);
-        exprs.push(e.nud());
+        exprs.push(e.nud(parser));
       } else {
         exprs.push(this.parse_expression(0));
       }

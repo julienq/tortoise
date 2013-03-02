@@ -16,6 +16,7 @@ var logo = require("./logo.js");
 
 logo.format_token = {
   "": function () { return "\033[00;47m%0\033[00m".fmt(this.value); },
+  dots: function () { return "\033[00;43m%0\033[00m".fmt(this.value || " "); },
   error: function () { return "\033[00;41m%0\033[00m".fmt(this.surface); },
   number: function () { return "\033[00;42m%0\033[00m".fmt(this.value); },
   word: function () { return "\033[00;46m%0\033[00m".fmt(this.value || " "); }

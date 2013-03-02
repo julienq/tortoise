@@ -39,6 +39,10 @@ a {
   color: white;
 }
 
+.token.dots {
+  background-color: yellow;
+}
+
 
     </style>
   </head>
@@ -50,6 +54,9 @@ logo.format_token = {
   "": function () {
     return "<span class=\"token\">%0</span>".fmt(this.value);
   },
+  dots: function () {
+    return "<span class=\"token dots\">%0</span>".fmt(this.value || " ");
+  },
   error: function () {
     return "<span class=\"token error\">%0</span>".fmt(this.surface);
   },
@@ -57,22 +64,29 @@ logo.format_token = {
     return "<span class=\"token number\">%0</span>".fmt(this.value);
   },
   word: function () {
-    return "<span class=\"token word\">%0</span>".fmt(this.value || " ");
+    return "<span class=\"token word\">%0</span>".fmt(this.value || " ");
   }
 };
 
 
 function show(prompt, tokens) {
   if (tokens) {
+    console.log(tokens);
     var p = document.body.appendChild(document.createElement("p"));
     p.innerHTML = "<span class=\"token prompt\">%0</span> ".fmt(prompt) +
       tokens.join(" ");
+    try {
+      console.log(parser.parse_tokens(tokens));
+    } catch (e) {
+      p.innerHTML += " (%0)".fmt(e);
+    }
   }
 }
 
 var tokenizer = Object.create(logo.tokenizer).init();
+var parser = Object.create(logo.parser).init();
 
-function tokenize(input) {
+function parse(input) {
   tokenizer.tokenize(input, show);
 }
 
