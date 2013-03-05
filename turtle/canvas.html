@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Canvas Turtle</title>
+    <meta charset="UTF-8">
+    <style>
+
+.screen {
+  width: 854px;
+  height: 480px;
+  background-color: aqua;
+  position: relative;
+}
+
+.screen canvas {
+  position: absolute;
+}
+
+    </style>
+  </head>
+  <body>
+    <div class="screen">
+      <canvas width="854" height="480" id="bg"></canvas>
+      <canvas width="854" height="480" id="fg"></canvas>
+      <canvas width="854" height="480" id="tl"></canvas>
+    </div>
+    <script>
+
+"use strict";
+
+var bg = document.getElementById("bg").getContext("2d");
+var fg = document.getElementById("fg").getContext("2d");
+var tl = document.getElementById("tl").getContext("2d");
+var W = fg.canvas.width;
+var H = fg.canvas.height;
+
+fg.translate(W / 2 + 0.5, H / 2 + 0.5);
+fg.rotate(-Math.PI / 2);
+
+tl.translate(W / 2 + 0.5, H / 2 + 0.5);
+tl.rotate(-Math.PI / 2);
+
+var pendown;
+
+function PENDOWN() {
+  if (pendown) {
+    return;
+  }
+  pendown = true;
+  fg.beginPath();
+  fg.moveTo(0, 0);
+  update_turtle();
+}
+
+function PENUP() {
+  if (!pendown) {
+    return;
+  }
+  pendown = false;
+  save_fg();
+  update_turtle();
+}
+
+function FORWARD(steps) {
+  if (pendown) {
+    fg.lineTo(steps, 0);
+    fg.clearRect(-W / 2 + 0.5, -H / 2 + 0.5, W, H);
+    fg.stroke();
+  }
+  fg.translate(steps, 0);
+  tl.translate(steps, 0);
+  update_turtle();
+}
+
+function RIGHT(degrees) {
+  fg.rotate(degrees / 180 * Math.PI);
+  tl.rotate(degrees / 180 * Math.PI);
+  update_turtle();
+}
+
+function update_turtle() {
+  tl.clearRect(-W / 2 + 0.5, -H / 2 + 0.5, W, H);
+  if (pendown) {
+    tl.beginPath();
+    tl.arc(0, 0, 2, 0, 2 * Math.PI);
+    tl.fill();
+  }
+  tl.beginPath();
+  tl.moveTo(12, 0);
+  tl.lineTo(-12, 8);
+  tl.lineTo(-12, -8);
+  tl.closePath();
+  tl.stroke();
+}
+
+function save_fg() {
+  bg.putImageData(fg.getImageData(0, 0, W, H), 0, 0);
+  fg.clearRect(-W / 2 + 0.5, -H / 2 + 0.5, W, H);
+}
+
+PENDOWN();
+
+    </script>
+  </body>
+</html>
+
