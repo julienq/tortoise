@@ -83,11 +83,10 @@ function show(prompt, tokens) {
   }
 }
 
-var tokenizer = Object.create(logo.tokenizer).init();
-var parser = Object.create(logo.parser).init();
+var parser = Object.create(logo.Parser).init();
 
 function parse(input) {
-  tokenizer.tokenize(input, show);
+  parser.tokenizer.tokenize(input, show);
 }
 
     </script>

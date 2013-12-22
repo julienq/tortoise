@@ -14,25 +14,27 @@
 
   // Tokenizer
 
-  var urtoken = {};
+  logo.Token = {
+    error: function (message) {
+      throw "Error line %0 near %1: %2".fmt(this.line, this, message);
+    },
 
-  urtoken.error = function (message) {
-    throw "Error line %0 near %1: %2".fmt(this.line, this, message);
+    toString: function () {
+      return (logo.format_token[this.type] || logo.format_token[""] ||
+          logo.format_token).call(this);
+    }
   };
 
   // Formatted output, to be overridden
-  logo.format_token = {
-    "": function () { return this.value; }
+  logo.format_token = function () {
+    return this.value;
   };
 
-  urtoken.toString = function () {
-    var fmt = logo.format_token[this.type] || logo.format_token[""];
-    return fmt.call(this);
-  }
 
-  var tokenizer = logo.tokenizer = {};
+  // TODO: check whether "foo~\nbar is the word foobar or foo~\nbar
+  var tokenizer = logo.Tokenizer = {};
 
-  tokenizer.init = function(line) {
+  tokenizer.init = function (line) {
     this.line = line || 0;
     this.open = [];
     this.list = 0;
@@ -47,7 +49,7 @@
   };
 
   // Get the next token or add to an already created token
-  tokenizer.next_token = function() {
+  tokenizer.next_token = function () {
     this.tilda = false;
     this.comment = false;
     this.escaped = false;
@@ -65,11 +67,15 @@
     if (!token) {
       // Look for a new token
       for (; this.i < l && /\s/.test(this.input[this.i]); ++this.i) {
-        if (this.input[this.i] === "\n") ++this.line;
+        if (this.input[this.i] === "\n") {
+          ++this.line;
+        }
       }
-      if (this.i >= l) return;
+      if (this.i >= l) {
+        return;
+      }
       var c = this.input[this.i++];
-      var token = Object.create(urtoken);
+      var token = Object.create(logo.Token);
       token.line = this.line + 1;
       if ((this.i === 1 || this.input[this.i - 2] === "\n") &&
           c === "#" && this.input[this.i] === "!") {
@@ -270,10 +276,16 @@
           } else if (c === "|") {
             this.bars = true;
             this.surface += c;
-          } else if (this.list === 0 && (/\s/.test(c) || c === "[" ||
-                c === "]" || c === "(" || c === ")" || c === "{" || c === "}" ||
-                c === "+" || c === "-" || c === "*" || c === "/" || c === "=" ||
-                c === "<" || c === ">") ||
+          } else if (
+              (this.list === 0 &&
+                ((token.type === "word" &&
+                  (/\s/.test(c) || c === "[" || c === "]" || c === "(") ||
+                  c === ")") ||
+                 (token.type !== "word" &&
+                  (/\s/.test(c) || c === "[" || c === "]" || c === "(" ||
+                   c === ")" || c === "{" || c === "}" || c === "+" ||
+                   c === "-" || c === "*" || c === "/" || c === "=" ||
+                   c === "<" || c === ">")))) ||
               (this.list > 0 && (/\s/.test(c) || c === "[" || c === "]"))) {
             check_number();
             return token;
@@ -294,7 +306,7 @@
   // Tokenize input and call a continuation with either a list of tokens or a
   // prompt for more tokens.
   // TODO handle END on its own line here
-  tokenizer.tokenize = function(input, f) {
+  tokenizer.tokenize = function (input, f) {
     this.i = 0;
     this.input = input;
     var token;
@@ -322,58 +334,79 @@
     return this;
   }
 
-  var urscope = {};
-
-  urscope.define = function(n) {
-    var t = this.def[n.value];
-    if (typeof t === "object") {
-      n.error(t.reserved ? "Already reserved." : "Already defined.");
+  logo.Symbol = {
+    error: function(message) {
+      throw message;
+    },
+    nud: function() {
+      this.error("Undefined.");
+    },
+    led: function() {
+      this.error("Missing operator.");
     }
-    this.def[n.value] = n;
-    n.reserved = false;
-    n.nud = self;
-    n.led = null;
-    n.std = null;
-    n.lbp = 0;
-    n.scope = 0;
-    return n;
   };
 
-  urscope.find = function(parser, n) {
-    var e = this;
-    var o;
-    while (true) {
-      o = e.def[n];
-      if (o && typeof o !== "function") return e.def[n];
-      e = e.parent;
-      if (!e) {
-        o = parser.symtab[n];
-        return o && typeof o !== "function" ? o : parser.symtab["(name)"];
+  logo.Scope = {
+    define: function(n, scope) {
+      var t = this.def[n.value];
+      if (typeof t === "object") {
+        n.error(t.reserved ? "Already reserved." : "Already defined.");
       }
+      this.def[n.value] = n;
+      n.reserved = false;
+      n.nud = self;
+      n.led = null;
+      n.std = null;
+      n.lbp = 0;
+      n.scope = scope;
+      return n;
+    },
+
+    // TOOD we can get rid of def
+    find: function (parser, n) {
+      var e = this;
+      var o;
+      while (true) {
+        o = e.def[n];
+        if (o && typeof o !== "function") {
+          return e.def[n];
+        }
+        e = Object.getPrototypeOf(e);
+        if (!e) {
+          o = parser.symtab[n];
+          return o && typeof o !== "function" ? o : parser.symtab["(name)"];
+        }
+      }
+    },
+
+    reserve: function(n) {
+      if (n.arity !== "name" || n.reserved) {
+        return;
+      }
+      var t = this.def[n.value];
+      if (t) {
+        if (t.reserved) {
+          return;
+        }
+        if (t.arity === "name") {
+          n.error("Already defined.");
+        }
+      }
+      this.def[n.value] = n;
+      n.reserved = true;
     }
   };
-
-  urscope.reserve = function(n) {
-    if (n.arity !== "name" || n.reserved) return;
-    var t = this.def[n.value];
-    if (t) {
-      if (t.reserved) return;
-      if (t.arity === "name") n.error("Already defined.");
-    }
-    this.def[n.value] = n;
-    n.reserved = true;
-  }
 
   function new_scope(parent_scope) {
-    var scope = Object.create(urscope);
+    var scope = Object.create(parent_scope || logo.Scope);
     scope.def = {};
-    scope.parent = parent_scope;
     return scope;
   }
 
-  var parser = logo.parser = {};
+  var parser = logo.Parser = {};
 
-  parser.init = function () {
+  parser.init = function (tokenizer) {
+    this.tokenizer = tokenizer || Object.create(logo.Tokenizer).init();
     this.symtab = {};
     this.symbol("]");
     this.symbol(")");
@@ -394,16 +427,16 @@
         args: [name]
       };
     };
-    this.infix("+", 50, "SUM");
-    this.infix("-", 50, "DIFFERENCE");
-    this.infix("*", 60, "PRODUCT");
-    this.infix("/", 60, "QUOTIENT");
     this.infix("=", 40, "EQUALP");
     this.infix("<", 40, "LESSP");
     this.infix(">", 40, "GREATERP");
     this.infix("<=", 40, "LESSEQUALP");
     this.infix(">=", 40, "GREATEREQUALP");
     this.infix("<>", 40, "NOTEQUALP");
+    this.infix("+", 50, "SUM");
+    this.infix("-", 50, "DIFFERENCE");
+    this.infix("*", 60, "PRODUCT");
+    this.infix("/", 60, "QUOTIENT");
 
     this.prefix("[", function(parser) {
       for (var list = { arity: "list", value: [] }; true;) {
@@ -472,7 +505,6 @@
     this.token.arity = a;
   };
 
-  // Create a new symbol with given id and binding power
   parser.symbol = function(id, bp) {
     bp = bp || 0;
     var s = this.symtab[id];
@@ -481,17 +513,7 @@
         s.lbp = bp;
       }
     } else {
-      s = Object.create({
-        error: function(message) {
-          throw message;
-        },
-        nud: function() {
-          this.error("Undefined.");
-        },
-        led: function() {
-          this.error("Missing operator.");
-        }
-      });
+      s = Object.create(logo.Symbol);
       s.id = s.value = id;
       s.lbp = bp;
       this.symtab[id] = s;
@@ -535,11 +557,11 @@
     var f = this.symbol(name);
     var parser = this;
     f.nud = function (parser) {
-      return {
-        arity: "call",
-        value: name,
-        args: flexo.times(n, function() { return parser.parse_expression(0); })
-      };
+      var args = [];
+      for (var i = 0; i < n; ++i) {
+        args.push(parser.parse_expression(0));
+      }
+      return { arity: "call", value: name, args: args };
     }
     return f;
   };

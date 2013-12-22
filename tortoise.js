@@ -22,14 +22,13 @@ logo.format_token = {
   word: function () { return "\033[00;46m%0\033[00m".fmt(this.value || " "); }
 };
 
-var tokenizer = Object.create(logo.tokenizer).init();
-var parser = Object.create(logo.parser).init();
+var parser = Object.create(logo.Parser).init();
 
 function repl(line) {
-  tokenizer.tokenize(line + "\n", function (p, tokens) {
+  parser.tokenizer.tokenize(line + "\n", function (p, tokens) {
     if (tokens) {
       console.log("%0\t%1 (x%2)"
-        .fmt(tokenizer.line, tokens.join(" "), tokens.length));
+        .fmt(parser.tokenizer.line, tokens.join(" "), tokens.length));
     }
     prompt("%0 ".fmt(p), repl);
   });
