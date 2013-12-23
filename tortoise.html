@@ -83,10 +83,16 @@ function show(prompt, tokens) {
   }
 }
 
-var parser = Object.create(logo.Parser).init();
+var interpreter = Object.create(logo.Interpreter).init();
 
-function parse(input) {
-  parser.tokenizer.tokenize(input, show);
+function eval_(input) {
+  interpreter.eval(input, function (_, values) {
+    if (values) {
+      values.forEach(function (value) {
+        console.log(value);
+      });
+    }
+  });
 }
 
     </script>

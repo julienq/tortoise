@@ -11,9 +11,14 @@
     });
   };
 
+  // Bound version of reduce for processing array-like objects like arguments
+  var reduce = Function.prototype.call.bind(Array.prototype.reduce);
+
 
   // Tokenizer
 
+  // Tokens have a type (name, word, separator, error, dots, infix), a surface
+  // value and a normalized value.
   logo.Token = {
     error: function (message) {
       throw "Error line %0 near %1: %2".fmt(this.line, this, message);
@@ -334,20 +339,26 @@
     return this;
   }
 
+  // Tokens will inherit from symbols, kept in a symbol table.
   logo.Symbol = {
     error: function(message) {
       throw message;
     },
+
+    // Null denotation; does not care about the token to its left. Used by
+    // values and prefix operators.
     nud: function() {
       this.error("Undefined.");
     },
+
+    // Left denotation; used by infix operators.
     led: function() {
       this.error("Missing operator.");
     }
   };
 
   logo.Scope = {
-    define: function(n, scope) {
+    define: function(n) {
       var t = this.def[n.value];
       if (typeof t === "object") {
         n.error(t.reserved ? "Already reserved." : "Already defined.");
@@ -358,25 +369,7 @@
       n.led = null;
       n.std = null;
       n.lbp = 0;
-      n.scope = scope;
       return n;
-    },
-
-    // TOOD we can get rid of def
-    find: function (parser, n) {
-      var e = this;
-      var o;
-      while (true) {
-        o = e.def[n];
-        if (o && typeof o !== "function") {
-          return e.def[n];
-        }
-        e = Object.getPrototypeOf(e);
-        if (!e) {
-          o = parser.symtab[n];
-          return o && typeof o !== "function" ? o : parser.symtab["(name)"];
-        }
-      }
     },
 
     reserve: function(n) {
@@ -398,35 +391,33 @@
   };
 
   function new_scope(parent_scope) {
-    var scope = Object.create(parent_scope || logo.Scope);
-    scope.def = {};
+    var scope = logo.Scope;
+    scope.def = parent_scope ? Object.create(parent_scope.def) : {};
     return scope;
   }
 
   var parser = logo.Parser = {};
 
   parser.init = function (tokenizer) {
-    this.tokenizer = tokenizer || Object.create(logo.Tokenizer).init();
     this.symtab = {};
     this.symbol("]");
     this.symbol(")");
     this.symbol("(end)");
-    this.symbol("(name)").nud = function () {
-      // Handle parens
-      return this;
-    };
+    this.symbol("(name)");
     this.symbol("(literal)").nud = self;
+    // :foo means THING "foo
     this.symbol("(dots)").nud = function (parser) {
-      var name = Object.create(this.symtab("(literal)"));
+      var name = Object.create(this.symtab["(literal)"]);
       name.value = this.value;
       name.surface = this.surface;
       name.arity = "literal";
       return {
         arity: "call",
-        value: parser.scope.find(parser, "THING"),
+        value: parser.find_in_scope("THING"),
         args: [name]
       };
     };
+
     this.infix("=", 40, "EQUALP");
     this.infix("<", 40, "LESSP");
     this.infix(">", 40, "GREATERP");
@@ -446,36 +437,58 @@
         } else if (parser.token.id === "(end)") {
           break;
         }
-        list.value.push(parser.parse_expression(0));
+        list.value.push(parser.expression(0));
       }
       return list;
     });
 
     this.prefix("(", function(parser) {
-      var expr = parser.parse_expression(0);
+      var expr = parser.expression(0);
       parser.advance(")");
       return expr;
     });
 
-    this.root_scope = new_scope();
+    this.prefix("to", function (parser) {
+      // TODO
+    });
+
+    this.constant("TRUE", true);
+    this.constant("FALSE", false);
+
+    this.scope = this.root_scope = new_scope();
+    this.tokenizer = tokenizer || Object.create(logo.Tokenizer).init();
+
     return this;
   };
 
-  // Parse a list of tokens and return a list of expressions
-  parser.parse_tokens = function(tokens) {
-    this.i = 0;
-    this.tokens = tokens;
-    delete this.token;
-    this.scope = new_scope(this.root_scope);
-    this.advance();
-    return this.parse_expression(0);
-    // return this.parse_expressions();
+  parser.find_in_scope = function (n) {
+    return n in this.scope.def ? this.scope.def[n] :
+      n in this.symtab ? this.symtab[n] : this.symtab["(name)"];
   }
+
+  // Make a symbol from an id and an optional binding power (which defaults to
+  // zero.) If the symbol already exists, update its binding power, otherwise
+  // create a new one. Return the new or existing symbol.
+  parser.symbol = function(id, bp) {
+    bp = bp || 0;
+    var s = this.symtab[id];
+    if (s) {
+      if (bp >= s.lbp) {
+        s.lbp = bp;
+      }
+    } else {
+      s = Object.create(logo.Symbol);
+      s.id = s.value = id;
+      s.lbp = bp;
+      this.symtab[id] = s;
+    }
+    return s;
+  };
 
   // Advance to the next token, possibly expecting an id
   parser.advance = function (id) {
     if (id && this.token.id !== id) {
-      this.token.error("Expected '%0'.".fmt(id));
+      this.token.error("Expected “%0”.".fmt(id));
     }
     if (this.i >= this.tokens.length) {
       this.token = this.symtab["(end)"];
@@ -486,7 +499,7 @@
     var a = t.type;
     var o;
     if (a === "name") {
-      o = this.scope.find(this, v);
+      o = this.find_in_scope(v);
     } else if (a === "infix" || a === "separator") {
       o = this.symtab[v];
       if (!o) {
@@ -505,23 +518,12 @@
     this.token.arity = a;
   };
 
-  parser.symbol = function(id, bp) {
-    bp = bp || 0;
-    var s = this.symtab[id];
-    if (s) {
-      if (bp >= s.lbp) {
-        s.lbp = bp;
-      }
-    } else {
-      s = Object.create(logo.Symbol);
-      s.id = s.value = id;
-      s.lbp = bp;
-      this.symtab[id] = s;
-    }
-    return s;
+  // Close the current scope
+  parser.pop_scope = function () {
+    this.scope = Object.getPrototypeOf(this.scope);
   };
 
-  parser.parse_expression = function(rbp) {
+  parser.expression = function(rbp) {
     var t = this.token;
     this.advance();
     var left = t.nud(this);
@@ -535,12 +537,11 @@
 
   parser.infix = function(id, bp, name) {
     var s = this.symbol(id, bp);
-    var parser = this;
     s.led = function (parser, left) {
       return {
         arity: "infix",
         value: name,
-        args: [left, parser.parse_expression(bp)]
+        args: [left, parser.expression(bp)]
       };
     };
     return s;
@@ -552,35 +553,96 @@
     return s;
   };
 
-  // TODO check the binding power
-  parser.add_function = function(name, n) {
-    var f = this.symbol(name);
-    var parser = this;
-    f.nud = function (parser) {
-      var args = [];
-      for (var i = 0; i < n; ++i) {
-        args.push(parser.parse_expression(0));
-      }
-      return { arity: "call", value: name, args: args };
-    }
-    return f;
+  parser.constant = function (s, v) {
+    var x = this.symbol(s);
+    x.nud = function (parser) {
+      parser.scope.reserve(this);
+      this.value = v;
+      this.arity = "literal";
+      return this;
+    };
+    x.value = v;
+    return x;
   };
 
-  parser.parse_expressions = function() {
-    for (var exprs = []; true;) {
-      if (this.token.id === "(end)") {
-        break;
-      }
-      var e = this.token;
-      if (e.nud) {
-        this.advance();
-        this.scope.reserve(e);
-        exprs.push(e.nud(parser));
-      } else {
-        exprs.push(this.parse_expression(0));
-      }
+  // Parse a list of tokens and return a list of expressions
+  parser.parse_tokens = function(tokens) {
+    if (tokens) {
+      this.i = 0;
+      this.tokens = tokens;
+      delete this.token;
+      this.advance();
     }
-    return exprs;
+    return this.expression(0);
+  };
+
+
+  var interpreter = logo.Interpreter = {};
+
+  interpreter.init = function () {
+    this.parser = logo.Parser.init();
+    this.lib("DIFFERENCE", function (x, y) {
+      return x - y;
+    }, 2);
+    this.lib("EQUALP", function (x, y) {
+      return x === y;
+    }, 2);
+    this.alias("EQUALP", "EQUAL?");
+    this.lib("PRODUCT", function (x, y) {
+      return arguments.length === 2 ? x * y :
+        reduce(arguments, function (x, y) {
+          return x * y;
+        }, 1);
+    }, 2, 0, Infinity);
+    this.lib("QUOTIENT", function (x, y) {
+      return arguments.length === 2 ? x / y : 1 / x;
+    }, 2, 1);
+    this.lib("SUM", function (x, y) {
+      return arguments.length === 2 ? x + y :
+        reduce(arguments, function (x, y) {
+          return x + y;
+        }, 0);
+    }, 2, 0, Infinity);
+    this.lib("THING", function (name) {
+      return this.find_in_scope(name).value;
+    }, 1);
+    return this;
+  };
+
+  interpreter.lib = function (name, f, arity, min, max) {
+    this.parser.root_scope.define({
+      value: name,
+      "function": f,
+      args: arity,
+      min: typeof min === "number" ? min : arity,
+      max: typeof max === "number" ? max : arity
+    });
+  };
+
+  interpreter.alias = function (name, alias) {
+    this.parser.root_scope.define(Object
+        .create(this.parser.root_scope.def[name], {
+          value: { value: alias, enumerable: true, writable: true }
+        }));
+  };
+
+  interpreter.eval = function (input, f) {
+    this.parser.tokenizer.tokenize(input, function (prompt, tokens) {
+      if (prompt === "?") {
+        var values = [];
+        var expr = parser.parse_tokens(tokens);
+        if (expr["function"]) {
+          var f = expr["function"];
+          for (var i = 0, n = expr.args, args = []; i < n; ++i) {
+            args.push(parser.parse_tokens().value);
+          }
+          values.push(f.apply(null, args));
+        }
+        f(prompt, values);
+      } else {
+        f(prompt);
+      }
+    });
   };
 
 }(typeof exports === "object" ? exports : this.logo = {}));
