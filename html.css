@@ -1,0 +1,58 @@
+body {
+  font-family: Univers, "Helvetica Neue", Helvetica, sans-serif;
+}
+
+a {
+  text-decoration: none;
+  color: #ff4040;
+}
+
+.token {
+  background-color: #ddd;
+  padding: 0 .2rem;
+}
+
+.token.prompt {
+  background-color: black;
+  color: white;
+}
+
+.token.error {
+  background-color: red;
+  color: yellow;
+}
+
+.token.number {
+  background-color: #8f0;
+}
+
+.token.word {
+  background-color: #08f;
+  color: white;
+}
+
+.token.dots {
+  background-color: yellow;
+}
+
+.term, .term input {
+  margin: 1em;
+  font-size: 1em;
+  font-family: "Avenir Next", sans-serif;
+}
+
+.term input {
+  border: none;
+  outline: none;
+  width: 100%;
+  margin: 0;
+}
+
+.term p:last-child {
+  display: flex;
+  display: -webkit-flex;
+}
+
+.term p:last-child span {
+  margin-right: 0.5rem;
+}

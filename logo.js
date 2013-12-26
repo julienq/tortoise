@@ -156,9 +156,19 @@
           token.dotted = false;
         } else if (c === "-") {
           token.value = token.surface = c;
-          token.number = true;
-          token.dotted = false;
-          token.type = "name";
+          var j = this.tokens.length - 1;
+          var i = this.i - 2;
+          if ((j >= 0 && (this.tokens[j].type === "infix" ||
+                  this.tokens[j].value === "(")) ||
+              (i >= 0 && /\s/.test(this.input[i]) &&
+               /\S/.test(this.input[this.i]))) {
+            token.number = true;
+            token.dotted = false;
+            token.type = "name";
+          } else {
+            token.type = "infix";
+            return token;
+          }
         } else if (c === "<") {
           if (this.input[this.i] === "=" || this.input[this.i] === ">") {
             c += this.input[this.i++];
@@ -566,7 +576,7 @@
   };
 
   // Parse a list of tokens and return a list of expressions
-  parser.parse_tokens = function(tokens) {
+  parser.parse_tokens = function (tokens) {
     if (tokens) {
       this.i = 0;
       this.tokens = tokens;
@@ -574,6 +584,22 @@
       this.advance();
     }
     return this.expression(0);
+  };
+
+  //  Tokenizes, then parses the input and return a list of expressions.
+  parser.parse = function (input, f) {
+    var exprs = [];
+    this.tokenizer.tokenize(input, function (prompt, tokens) {
+      if (prompt === "?") {
+        exprs.push(this.parse_tokens(tokens));
+        while (this.i < this.tokens.length - 1) {
+          exprs.push(this.parse_tokens());
+        }
+        f(prompt, exprs);
+      } else {
+        f(prompt);
+      }
+    }.bind(this));
   };
 
 
@@ -627,18 +653,9 @@
   };
 
   interpreter.eval = function (input, f) {
-    this.parser.tokenizer.tokenize(input, function (prompt, tokens) {
+    this.parser.parse(input, function (prompt, exprs) {
       if (prompt === "?") {
-        var values = [];
-        var expr = parser.parse_tokens(tokens);
-        if (expr["function"]) {
-          var f = expr["function"];
-          for (var i = 0, n = expr.args, args = []; i < n; ++i) {
-            args.push(parser.parse_tokens().value);
-          }
-          values.push(f.apply(null, args));
-        }
-        f(prompt, values);
+        f(prompt, exprs);
       } else {
         f(prompt);
       }
